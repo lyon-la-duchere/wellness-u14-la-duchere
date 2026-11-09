@@ -781,15 +781,22 @@
 
   function openSessionDialog(session) {
     const editing = !!session;
-    const dialog = openDialog(`<form id="session-form"><h2>${editing ? 'Modifier la séance' : 'Nouvelle séance U14'}</h2><label class="secure-field">Nom de la séance<input name="title" required maxlength="80" value="${html(session?.title || '')}" placeholder="Ex. Entraînement collectif"></label><label class="secure-field">Date<input name="session_date" type="date" required value="${html(session?.session_date || new Date().toLocaleDateString('sv-SE'))}"></label><label class="secure-field">Type<select name="session_type"><option value="training" ${session?.session_type !== 'match' ? 'selected' : ''}>Entraînement</option><option value="match" ${session?.session_type === 'match' ? 'selected' : ''}>Match</option></select></label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">${editing ? 'Enregistrer' : 'Créer la séance'}</button></div></form>`);
+    const dialog = openDialog(`<form id="session-form"><h2>${editing ? 'Modifier la séance' : 'Nouvelle séance U14'}</h2><label class="secure-field">Nom de la séance<input name="title" required maxlength="80" value="${html(session?.title || '')}" placeholder="Ex. Entraînement collectif"></label><label class="secure-field">Date<input name="session_date" type="date" required value="${html(session?.session_date || new Date().toLocaleDateString('sv-SE'))}"></label><label class="secure-field">Type<select name="session_type"><option value="training" ${session?.session_type !== 'match' ? 'selected' : ''}>Entraînement</option><option value="match" ${session?.session_type === 'match' ? 'selected' : ''}>Match</option></select></label><label class="secure-field">Durée commune à la séance (minutes)<input name="duration_minutes" type="number" min="1" max="300" step="1" value="${html(session?.duration_minutes ?? '')}" placeholder="Ex. 90"></label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">${editing ? 'Enregistrer' : 'Créer la séance'}</button></div></form>`);
     one('#session-form', dialog).onsubmit = async (event) => {
       event.preventDefault();
       const formData = new FormData(event.currentTarget);
+      const durationValue = String(formData.get('duration_minutes') || '');
+      const durationMinutes = durationValue === '' ? null : Number(durationValue);
+      if (durationMinutes !== null && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 300)) {
+        one('#dialog-error', dialog).textContent = 'La durée doit être comprise entre 1 et 300 minutes.';
+        return;
+      }
       if (editing) {
         const { error } = await client.from('sessions').update({
           title: String(formData.get('title')).trim(),
           session_date: formData.get('session_date'),
           session_type: formData.get('session_type'),
+          duration_minutes: durationMinutes,
         }).eq('id', session.id);
         if (error) {
           one('#dialog-error', dialog).textContent = 'Impossible de modifier la séance.';
@@ -804,7 +811,7 @@
         renderAdmin();
         return;
       }
-      const { data, error } = await client.functions.invoke('create-session-links', { body: { title: formData.get('title'), sessionDate: formData.get('session_date'), sessionType: formData.get('session_type') } });
+      const { data, error } = await client.functions.invoke('create-session-links', { body: { title: formData.get('title'), sessionDate: formData.get('session_date'), sessionType: formData.get('session_type'), durationMinutes } });
       if (error || !data?.sharedUrl) {
         one('#dialog-error', dialog).textContent = data?.error || 'Impossible de créer la séance. Vérifie les joueurs et les questions.';
         return;
