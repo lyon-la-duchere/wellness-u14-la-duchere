@@ -32,7 +32,9 @@
       }
 
       const wellnessQuestions = data.questions;
-      const workloadQuestions = sharedToken && Array.isArray(data.workloadQuestions) ? data.workloadQuestions : [];
+      const workloadQuestions = sharedToken && Array.isArray(data.workloadQuestions)
+        ? data.workloadQuestions.filter((question) => question.metricKey !== 'duration_minutes')
+        : [];
       one('.player-card .eyebrow').textContent = `SÉANCE · ${dateText(data.sessionDate)}`;
       one('.player-card h1').textContent = data.title;
       one('.player-card > p:not(.eyebrow)').textContent = sharedToken
@@ -41,7 +43,7 @@
       if (sharedToken) {
         const playerOptions = data.players.map((player) => `<option value="${html(player.id)}">${html(player.display_name)}</option>`).join('');
         one('.player-card > p:not(.eyebrow)').insertAdjacentHTML('afterend', `<label class="shared-player-select" for="shared-player">Ton prénom<select id="shared-player" required><option value="">Choisir ton prénom</option>${playerOptions}</select></label>`);
-        form.insertAdjacentHTML('afterend', `<section class="player-questionnaire-section" id="workload-section"><p class="eyebrow">QUESTIONNAIRE 2 · APRÈS LA SÉANCE</p><h2>Charge de travail</h2><p>Indique la durée réelle et l'effort global ressenti.</p><form class="formbox" id="workload-questionnaire"><div id="workload-questions"></div><p class="player-message" id="workload-message" role="status"></p><button class="btn player-submit" id="workload-submit" type="submit">Envoyer ma charge →</button></form></section>`);
+        form.insertAdjacentHTML('afterend', `<section class="player-questionnaire-section" id="workload-section"><p class="eyebrow">QUESTIONNAIRE 2 · APRÈS LA SÉANCE</p><h2>Charge de travail</h2><p>Évalue l'effort global ressenti pendant la séance.</p><form class="formbox" id="workload-questionnaire"><div id="workload-questions"></div><p class="player-message" id="workload-message" role="status"></p><button class="btn player-submit" id="workload-submit" type="submit">Envoyer ma charge →</button></form></section>`);
       }
       function markupFor(questions, kind) {
         return questions.map((question, index) => {
@@ -167,6 +169,8 @@
   let activeTab = 'sessions';
   let selectedSessionId = '';
   let detailSessionId = '';
+  let selectedWorkloadPlayerId = '';
+  let workloadChartSection = '';
   let showArchivedPlayers = false;
   let messageTimer;
 
@@ -204,6 +208,7 @@
     .secure-dialog{width:min(560px,calc(100vw - 28px));max-height:88vh;overflow:auto;border:0;padding:0;box-shadow:0 20px 70px #102f2833}.secure-dialog::backdrop{background:#102f2877}.secure-dialog form,.secure-dialog-content{padding:22px}.secure-dialog h2{margin:0 0 6px;font-size:20px}.secure-dialog p{color:#748177;font-size:12px}.secure-field{display:grid;gap:6px;margin:12px 0;color:#58665d;font-size:11px}.secure-field input,.secure-field select,.secure-field textarea{width:100%;min-height:38px;border:1px solid #e2e8e1;background:#fff;padding:8px 10px}.secure-field textarea{resize:vertical}.secure-check{display:flex;align-items:center;gap:8px;margin:12px 0;color:#59665d;font-size:11px}.secure-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.secure-error{color:#a84433!important;min-height:16px}.secure-toast{position:fixed;right:20px;bottom:20px;padding:12px 16px;background:#281d20;color:white;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s}.secure-toast.show{opacity:1}.invite-row{display:grid;grid-template-columns:145px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #e2e8e1}.invite-row input{min-width:0;height:34px;border:1px solid #e2e8e1;padding:0 7px;font-size:10px}.invite-row button{height:34px;border:0;background:#8e1b2c;color:white;padding:0 10px;font-size:10px}
     @media(max-width:700px){.secure-header{padding:12px 14px}.secure-nav{padding:0 10px;overflow:auto}.secure-nav button{white-space:nowrap;padding:12px 9px}.secure-content{padding:20px 12px}.secure-title{align-items:flex-start;flex-direction:column}.secure-title h1{font-size:24px}.secure-stat-grid{gap:6px}.secure-stat{padding:10px}.secure-stat span{font-size:7px}.secure-stat strong{font-size:17px}.secure-panel{padding:12px 9px}.invite-row{grid-template-columns:1fr auto}.invite-row input{grid-column:1/-1;grid-row:2}.wellness-legend div{grid-template-columns:1fr}.wellness-alert{flex-wrap:wrap}.wellness-alert .secure-small{margin-left:0}}
   `;
+  css.textContent += '\n    .workload-chart-wrap{overflow:auto}.workload-chart{display:block;max-width:none}.workload-chart-empty{margin:0;padding:24px;color:#748177;text-align:center;font-size:12px}.workload-chart-filter{min-width:170px}.secure-session-duration{width:90px;min-height:32px;border:1px solid #e2e8e1;background:#fff;padding:4px 7px}.load-state{display:inline-block;padding:4px 7px;font-size:10px;font-weight:600;white-space:nowrap}.load-under{color:#1760a8}.load-normal{color:#3f7d4e}.load-over{color:#a84433}.load-pending{color:#74817a}.load-state.load-under{background:#e8f1ff}.load-state.load-normal{background:#e6f0e5}.load-state.load-over{background:#f9eae5}.load-state.load-pending{background:#edf0ed}\n  ';
   document.head.append(css);
 
   function toast(text) {
@@ -223,7 +228,7 @@
       client.from('players').select('id,display_name,position,shirt_number,active,created_at').order('display_name'),
       client.from('questionnaire_questions').select('id,prompt,help_text,question_type,required,scale_min,scale_max,min_label,max_label,options,sort_order,active').order('sort_order'),
       client.from('workload_questions').select('id,prompt,help_text,question_type,metric_key,required,scale_min,scale_max,min_label,max_label,options,sort_order,active').order('sort_order'),
-      client.from('sessions').select('id,title,session_date,session_type,status,shared_token,form_snapshot,workload_snapshot,created_at').order('created_at', { ascending: false }),
+      client.from('sessions').select('id,title,session_date,session_type,status,shared_token,duration_minutes,form_snapshot,workload_snapshot,created_at').order('created_at', { ascending: false }),
       client.from('wellness_responses').select('id,session_id,player_id,answers,note,submitted_at').order('submitted_at', { ascending: false }),
       client.from('workload_responses').select('id,session_id,player_id,answers,duration_minutes,rpe,training_load,submitted_at').order('submitted_at', { ascending: false }),
       client.from('session_attendance').select('session_id,player_id,status,source,updated_at'),
@@ -255,6 +260,11 @@
       root.addEventListener('change', (event) => {
         if (event.target.closest('select[data-attendance]')) handleAttendanceChange(event);
         else if (event.target.closest('.secure-answer-edit')) handleAnswerChange(event);
+        else if (event.target.matches('.secure-session-duration')) handleSessionDurationChange(event);
+        else if (event.target.matches('[data-workload-chart-player]')) {
+          selectedWorkloadPlayerId = event.target.value;
+          renderAdmin();
+        }
       });
       many('.secure-nav button', root).forEach((button) => button.addEventListener('click', () => {
         activeTab = button.dataset.tab;
@@ -275,7 +285,15 @@
     if (activeTab === 'questions') content.innerHTML = renderQuestions();
     else if (activeTab === 'players') content.innerHTML = renderPlayers();
     else if (activeTab === 'attendance') content.innerHTML = renderAttendance();
-    else if (activeTab === 'workload') content.innerHTML = renderWorkload();
+    else if (activeTab === 'workload') {
+      content.innerHTML = renderWorkload()
+        .replace('<th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th>', '<th>JOUEUR</th><th>CHARGE · 7 J</th><th>MOYENNE / SEMAINE</th><th>ZONE</th><th>MONOTONIE · 7 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th>')
+        .replace('<td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.', '<td colspan="7" class="secure-muted">Aucune donnée de charge pour le moment.')
+        .replace('<th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th>', '<th>SÉANCE</th><th>TYPE</th><th>DURÉE · STAFF</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th>')
+        .replace('<td colspan="6" class="secure-muted">Aucune séance créée.', '<td colspan="7" class="secure-muted">Aucune séance créée.')
+        .replace('<p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p>', '<p>Charge hebdomadaire comparée à la moyenne individuelle des 4 semaines précédentes : bleu sous 0,8×, vert de 0,8× à 1,3×, rouge au-dessus de 1,3×. Une durée manquante ou moins de 3 semaines mesurées laisse la zone neutre. Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours.</p>');
+      content.insertAdjacentHTML('afterbegin', workloadChartSection);
+    }
     else content.innerHTML = detailSessionId ? renderSessionDetail(detailSessionId) : renderSessions();
   }
 
@@ -355,7 +373,8 @@
   }
 
   function answerControl(kind, session, player, question, value) {
-    if (value === undefined || value === null) return '<td>—</td>';
+    const durationField = kind === 'workload' && question.metricKey === 'duration_minutes';
+    if ((value === undefined || value === null) && !durationField) return '<td>—</td>';
     const data = `class="secure-answer-edit" data-answer-kind="${kind}" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" data-question-id="${html(question.id)}"`;
     if (question.type === 'scale') {
       const options = Array.from({ length: question.scaleMax - question.scaleMin + 1 }, (_, index) => question.scaleMin + index)
@@ -368,7 +387,7 @@
     }
     if (question.type === 'number') {
       const duration = question.metricKey === 'duration_minutes';
-      return `<td><input ${data} type="number" min="${duration ? 1 : 0}" max="${duration ? 300 : 10}" step="1" value="${html(value)}" aria-label="${html(question.prompt)}"></td>`;
+      return `<td><input ${data} type="number" min="${duration ? 1 : 0}" max="${duration ? 300 : 10}" step="1" value="${html(value ?? '')}" aria-label="${html(question.prompt)}"></td>`;
     }
     return `<td><input ${data} type="text" maxlength="500" value="${html(value)}" aria-label="${html(question.prompt)}"></td>`;
   }
@@ -397,14 +416,21 @@
   }
 
   function renderWorkloadResults(session) {
-    const questions = Array.isArray(session.workload_snapshot) ? session.workload_snapshot : [];
+    const questions = Array.isArray(session.workload_snapshot)
+      ? session.workload_snapshot.filter((question) => question.metricKey !== 'duration_minutes')
+      : [];
     const responsesByPlayer = new Map(admin.workloadResponses.filter((item) => item.session_id === session.id).map((item) => [item.player_id, item]));
     const players = admin.players.filter((player) => player.active || responsesByPlayer.has(player.id));
     const headers = questions.map((question) => `<th>${html(question.prompt)}</th>`).join('');
     const rows = players.map((player) => {
       const response = responsesByPlayer.get(player.id);
-      const values = questions.map((question) => answerControl('workload', session, player, question, response?.answers?.[question.id])).join('');
-      const load = response ? `${fr(response.training_load, 0)} UA` : '—';
+      const values = questions.map((question) => {
+        const value = question.metricKey === 'duration_minutes'
+          ? response?.duration_minutes ?? ''
+          : response?.answers?.[question.id];
+        return answerControl('workload', session, player, question, value);
+      }).join('');
+      const load = response?.training_load == null ? 'Durée à renseigner' : `${fr(response.training_load, 0)} UA`;
       const status = response ? '<span class="secure-tag">Répondu</span>' : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-workload" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
       return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}<td><strong>${load}</strong></td></tr>`;
     }).join('');
@@ -459,32 +485,106 @@
         .sort((a, b) => a.session.session_date.localeCompare(b.session.session_date));
       const daily = new Map();
       for (const { response, session } of entries) {
-        daily.set(session.session_date, (daily.get(session.session_date) || 0) + Number(response.training_load || 0));
+        if (response.training_load != null) {
+          daily.set(session.session_date, (daily.get(session.session_date) || 0) + Number(response.training_load));
+        }
       }
       const dayValues = (days) => Array.from({ length: days }, (_, offset) => {
         const date = new Date(`${today}T12:00:00`);
         date.setDate(date.getDate() - (days - offset - 1));
         return daily.get(date.toLocaleDateString('sv-SE')) || 0;
       });
-      const recent7 = dayValues(7);
+      const rollingDates = Array.from({ length: 35 }, (_, offset) => {
+        const date = new Date(`${today}T12:00:00`);
+        date.setDate(date.getDate() - (34 - offset));
+        return date.toLocaleDateString('sv-SE');
+      });
+      const rolling35 = rollingDates.map((date) => daily.get(date) || 0);
+      const recent7 = rolling35.slice(-7);
       const weeklyLoad = recent7.reduce((sum, value) => sum + value, 0);
       const mean7 = weeklyLoad / 7;
       const deviation7 = Math.sqrt(recent7.reduce((sum, value) => sum + (value - mean7) ** 2, 0) / 7);
       const monotony = deviation7 > 0 ? mean7 / deviation7 : null;
-      const fitnessLoad = dayValues(28).reduce((sum, value) => sum + value, 0) / 4;
+      const hasMissingLoadBetween = (startKey, endKey) => admin.sessions
+        .filter((session) => session.session_date >= startKey && session.session_date <= endKey)
+        .some((session) => {
+          const attendance = admin.attendance.find((item) => item.session_id === session.id && item.player_id === player.id);
+          if (attendance?.status !== 'present') return false;
+          const response = entries.find((entry) => entry.session.id === session.id)?.response;
+          return response?.training_load == null;
+        });
+      const baselineWeeks = Array.from({ length: 4 }, (_, index) => {
+        const start = index * 7;
+        const end = start + 7;
+        const startKey = rollingDates[start];
+        const endKey = rollingDates[end - 1];
+        const hasMeasuredLoad = entries.some(({ response, session }) => session.session_date >= startKey
+          && session.session_date <= endKey && response.training_load != null);
+        return {
+          load: rolling35.slice(start, end).reduce((sum, value) => sum + value, 0),
+          complete: hasMeasuredLoad && !hasMissingLoadBetween(startKey, endKey),
+        };
+      }).filter((week) => week.complete);
+      const baselineCount = baselineWeeks.length;
+      const weeklyAverage = baselineCount
+        ? baselineWeeks.reduce((sum, week) => sum + week.load, 0) / baselineCount
+        : 0;
+      const ratio = weeklyAverage > 0 ? weeklyLoad / weeklyAverage : null;
+      const hasMissingLoad = hasMissingLoadBetween(rollingDates[28], rollingDates[34]);
+      const loadState = hasMissingLoad || baselineCount < 3 || ratio === null
+        ? 'load-pending'
+        : ratio < 0.8 ? 'load-under' : ratio > 1.3 ? 'load-over' : 'load-normal';
+      const loadLabel = { 'load-pending': 'À compléter', 'load-under': 'Sous-charge', 'load-normal': 'Dans la moyenne', 'load-over': 'Surcharge' }[loadState];
       const latest = entries.at(-1)?.response;
-      return `<tr><td><strong>${html(player.display_name)}</strong></td><td>${fr(weeklyLoad, 0)} UA</td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${fr(fitnessLoad, 0)} UA/sem.</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><strong class="${loadState}">${fr(weeklyLoad, 0)} UA</strong></td><td>${fr(weeklyAverage, 0)} UA</td><td><span class="load-state ${loadState}">${loadLabel}</span></td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
     }).join('');
     const workloadSessions = [...admin.sessions].sort((a, b) => b.session_date.localeCompare(a.session_date));
     const sessionRows = workloadSessions.map((session) => {
       const responses = admin.workloadResponses.filter((response) => response.session_id === session.id);
       const expectedPlayers = admin.attendance.filter((item) => item.session_id === session.id).length
         || admin.players.filter((player) => player.active).length;
-      const average = (field) => responses.length
-        ? fr(responses.reduce((sum, response) => sum + Number(response[field] || 0), 0) / responses.length, 1)
-        : '—';
-      return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${average('training_load')}${responses.length ? ' UA' : ''}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
+      const average = (field) => {
+        const values = responses.map((response) => response[field]).filter((value) => value != null).map(Number);
+        return values.length ? fr(values.reduce((sum, value) => sum + value, 0) / values.length, 1) : '—';
+      };
+      const hasLoad = responses.some((response) => response.training_load != null);
+      const duration = `<input class="secure-session-duration" data-session-id="${html(session.id)}" type="number" min="1" max="300" step="1" value="${html(session.duration_minutes ?? '')}" aria-label="Durée de ${html(session.title)} en minutes">`;
+      return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${duration}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${average('training_load')}${hasLoad ? ' UA' : ''}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
     }).join('');
+    const activePlayers = admin.players.filter((player) => player.active);
+    const chartPlayer = activePlayers.find((player) => player.id === selectedWorkloadPlayerId) || activePlayers[0];
+    selectedWorkloadPlayerId = chartPlayer?.id || '';
+    const chartEntries = admin.workloadResponses
+      .filter((response) => response.player_id === selectedWorkloadPlayerId && response.training_load != null)
+      .map((response) => ({ response, session: sessionsById.get(response.session_id) }))
+      .filter(({ session }) => !!session)
+      .sort((a, b) => a.session.session_date.localeCompare(b.session.session_date));
+    const chartWidth = Math.max(480, chartEntries.length * 82 + 72);
+    const chartHeight = 238;
+    const chartLeft = 52;
+    const chartTop = 18;
+    const chartBottom = 178;
+    const chartLimit = Math.max(100, Math.ceil(Math.max(0, ...chartEntries.map(({ response }) => Number(response.training_load))) / 100) * 100);
+    const chartPlotWidth = chartWidth - chartLeft - 18;
+    const chartPlotHeight = chartBottom - chartTop;
+    const chartGrid = [0, 0.5, 1].map((fraction) => {
+      const y = chartBottom - fraction * chartPlotHeight;
+      return `<line x1="${chartLeft}" y1="${y}" x2="${chartWidth - 18}" y2="${y}" stroke="#e2e8e1"/><text x="${chartLeft - 8}" y="${y + 4}" text-anchor="end" fill="#7d8981" font-size="10">${fr(chartLimit * fraction, 0)}</text>`;
+    }).join('');
+    const chartBars = chartEntries.map(({ response, session }, index) => {
+      const slot = chartPlotWidth / chartEntries.length;
+      const barWidth = Math.min(34, slot * 0.55);
+      const x = chartLeft + index * slot + (slot - barWidth) / 2;
+      const barHeight = Number(response.training_load) / chartLimit * chartPlotHeight;
+      const y = chartBottom - barHeight;
+      const title = session.title.length > 10 ? `${session.title.slice(0, 9)}…` : session.title;
+      return `<g><title>${html(session.title)} · ${dateText(session.session_date)} · ${fr(response.training_load, 0)} UA · RPE ${fr(response.rpe, 1)}</title><rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="#8e1b2c"/><text x="${x + barWidth / 2}" y="${Math.max(chartTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="10">${fr(response.training_load, 0)}</text><text x="${x + barWidth / 2}" y="${chartBottom + 18}" text-anchor="middle" fill="#58665d" font-size="10">${html(title)}</text><text x="${x + barWidth / 2}" y="${chartBottom + 34}" text-anchor="middle" fill="#7d8981" font-size="9">${dateText(session.session_date)}</text></g>`;
+    }).join('');
+    const chart = chartEntries.length
+      ? `<svg class="workload-chart" width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="Charge d’entraînement par séance pour ${html(chartPlayer.display_name)}"><title>Charge d’entraînement par séance · ${html(chartPlayer.display_name)}</title>${chartGrid}${chartBars}<text x="14" y="${chartTop + chartPlotHeight / 2}" transform="rotate(-90 14 ${chartTop + chartPlotHeight / 2})" text-anchor="middle" fill="#58665d" font-size="10">UA</text></svg>`
+      : `<p class="workload-chart-empty">${admin.workloadResponses.some((response) => response.player_id === selectedWorkloadPlayerId) ? 'Le RPE est enregistré; le staff doit renseigner la durée pour calculer la charge.' : 'Aucune charge calculable pour ce joueur.'}</p>`;
+    const chartPlayerOptions = activePlayers.map((player) => `<option value="${html(player.id)}" ${player.id === selectedWorkloadPlayerId ? 'selected' : ''}>${html(player.display_name)}</option>`).join('');
+    workloadChartSection = `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE D’ENTRAÎNEMENT</p><h2>Évolution par séance</h2><p>Charge = durée saisie par le staff × RPE ressenti par le joueur.</p></div><label class="secure-field workload-chart-filter">JOUEUR<select data-workload-chart-player ${activePlayers.length ? '' : 'disabled'}>${chartPlayerOptions}</select></label></div><div class="workload-chart-wrap">${chart}</div></section>`;
     const active = admin.workloadQuestions.filter((question) => question.active);
     const archived = admin.workloadQuestions.filter((question) => !question.active);
     const questionRow = (question) => `<tr><td><strong>${html(question.prompt)}</strong><div class="secure-muted">${html(question.help_text)}</div></td><td>${question.metric_key === 'duration_minutes' ? 'Durée · charge' : question.metric_key === 'rpe' ? 'RPE · charge' : question.question_type === 'scale' ? `Échelle ${question.scale_min}–${question.scale_max}` : question.question_type === 'number' ? 'Nombre' : question.question_type === 'short_text' ? 'Texte court' : 'Choix unique'}</td><td><div class="secure-actions"><button class="btn button-secondary secure-small" data-action="edit-workload-question" data-id="${html(question.id)}">Modifier</button>${question.metric_key ? '<span class="secure-muted">Indispensable au calcul</span>' : `<button class="btn button-secondary secure-small" data-action="${question.active ? 'archive-workload-question' : 'restore-workload-question'}" data-id="${html(question.id)}">${question.active ? 'Retirer' : 'Restaurer'}</button>`}</div></td></tr>`;
@@ -528,7 +628,9 @@
   function openManualResponseDialog(sessionId, playerId, kind) {
     const session = admin.sessions.find((item) => item.id === sessionId);
     const player = admin.players.find((item) => item.id === playerId);
-    const questions = kind === 'workload' ? session?.workload_snapshot || [] : session?.form_snapshot || [];
+    const questions = kind === 'workload'
+      ? (session?.workload_snapshot || []).filter((question) => question.metricKey !== 'duration_minutes')
+      : session?.form_snapshot || [];
     if (!session || !player || !questions.length) return;
     const title = kind === 'workload' ? 'Saisie manuelle · charge' : 'Saisie manuelle · wellness';
     const fields = questions.map((question, index) => {
@@ -562,15 +664,13 @@
       }
       let result;
       if (kind === 'workload') {
-        const durationQuestion = questions.find((question) => question.metricKey === 'duration_minutes');
         const rpeQuestion = questions.find((question) => question.metricKey === 'rpe');
-        const duration = Number(durationQuestion && answers[durationQuestion.id]);
         const rpe = Number(rpeQuestion && answers[rpeQuestion.id]);
-        if (!durationQuestion || !rpeQuestion || !Number.isInteger(duration) || duration < 1 || duration > 300 || !Number.isFinite(rpe) || rpe < 0 || rpe > 10) {
-          one('#dialog-error', dialog).textContent = 'Vérifie la durée et le RPE avant l’enregistrement.';
+        if (!rpeQuestion || !Number.isFinite(rpe) || rpe < 0 || rpe > 10) {
+          one('#dialog-error', dialog).textContent = 'Vérifie le RPE avant l’enregistrement.';
           return;
         }
-        result = await client.from('workload_responses').insert({ session_id: session.id, player_id: player.id, answers, duration_minutes: duration, rpe });
+        result = await client.from('workload_responses').insert({ session_id: session.id, player_id: player.id, answers, duration_minutes: session.duration_minutes, rpe });
       } else {
         result = await client.from('wellness_responses').insert({ session_id: session.id, player_id: player.id, answers, note: one('[name="note"]', dialog)?.value.trim() || '' });
       }
@@ -618,6 +718,24 @@
     toast('Présence mise à jour.');
   }
 
+  async function handleSessionDurationChange(event) {
+    const field = event.target.closest('.secure-session-duration');
+    if (!field) return;
+    const duration = field.value === '' ? null : Number(field.value);
+    if (duration !== null && (!Number.isInteger(duration) || duration < 1 || duration > 300)) {
+      toast('La durée doit être comprise entre 1 et 300 minutes.');
+      return;
+    }
+    const { error } = await client.from('sessions').update({ duration_minutes: duration }).eq('id', field.dataset.sessionId);
+    if (error) {
+      toast('Impossible d’enregistrer la durée de la séance.');
+      return;
+    }
+    await loadAdmin();
+    renderAdmin();
+    toast(duration === null ? 'Durée retirée; charges en attente.' : 'Durée enregistrée; charges recalculées.');
+  }
+
   async function handleAnswerChange(event) {
     const field = event.target.closest('.secure-answer-edit');
     if (!field) return;
@@ -638,7 +756,17 @@
       const value = field.type === 'number' ? Number(field.value) : field.tagName === 'SELECT' && field.value !== '' && !Number.isNaN(Number(field.value)) ? Number(field.value) : field.value;
       const answers = { ...response.answers, [questionId]: value };
       const values = { answers };
-      if (question?.metricKey === 'duration_minutes') values.duration_minutes = value;
+      if (question?.metricKey === 'duration_minutes') {
+        if (field.value === '') {
+          delete answers[questionId];
+          values.duration_minutes = null;
+        } else if (Number.isInteger(value) && value >= 1 && value <= 300) {
+          values.duration_minutes = value;
+        } else {
+          toast('La durée doit être comprise entre 1 et 300 minutes.');
+          return;
+        }
+      }
       if (question?.metricKey === 'rpe') values.rpe = value;
       result = await client.from('workload_responses').update(values).eq('id', response.id);
     }
