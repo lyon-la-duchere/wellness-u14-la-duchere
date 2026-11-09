@@ -51,7 +51,7 @@
         }
         return `<fieldset class="player-question"><legend>0${index + 1} · ${html(question.prompt)}</legend>${question.helpText ? `<p>${html(question.helpText)}</p>` : ''}${control}</fieldset>`;
       }).join('');
-      one('#player-note')?.remove();
+      one('#player-note', form)?.remove();
 
       many('.player-ratings').forEach((group) => group.addEventListener('click', (event) => {
         const button = event.target.closest('.player-rating');
