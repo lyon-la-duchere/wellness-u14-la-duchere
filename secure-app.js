@@ -17,7 +17,9 @@
     const form = one('#player-questionnaire');
     const message = one('#player-message');
     const submit = one('.player-submit');
-    const answers = {};
+    const playerCss = document.createElement('style');
+    playerCss.textContent = `.shared-player-select{display:grid;gap:7px;margin:16px 0;color:#58665d;font-size:12px}.shared-player-select select,.player-answer-number,.player-answer-choice,.player-answer-text{box-sizing:border-box;width:100%;min-height:42px;border:1px solid #e2e8e1;background:#fff;padding:9px 11px;color:#1d2c26}.player-questionnaire-section{margin-top:22px;padding-top:18px;border-top:1px solid #e2e8e1}.player-questionnaire-section h2{margin:4px 0 6px;font-size:19px}.player-questionnaire-section>p{margin:0 0 14px;color:#748177;font-size:12px}.player-questionnaire-section .formbox{margin-top:10px}`;
+    document.head.append(playerCss);
     form.onsubmit = null;
     submit.disabled = true;
     message.textContent = 'Chargement du questionnaire…';
@@ -29,70 +31,131 @@
         return;
       }
 
-      const questions = data.questions;
+      const wellnessQuestions = data.questions;
+      const workloadQuestions = sharedToken && Array.isArray(data.workloadQuestions) ? data.workloadQuestions : [];
       one('.player-card .eyebrow').textContent = `SÉANCE · ${dateText(data.sessionDate)}`;
       one('.player-card h1').textContent = data.title;
       one('.player-card > p:not(.eyebrow)').textContent = sharedToken
-        ? 'Choisis ton prénom, puis réponds. Tes réponses ne sont pas visibles par les autres joueurs.'
+        ? 'Choisis ton prénom et complète séparément le questionnaire wellness et le questionnaire de charge.'
         : 'Réponds selon ton ressenti. Tes réponses sont transmises au staff et ne sont pas visibles par les autres joueurs.';
       if (sharedToken) {
         const playerOptions = data.players.map((player) => `<option value="${html(player.id)}">${html(player.display_name)}</option>`).join('');
-        one('.player-card > p:not(.eyebrow)').insertAdjacentHTML('afterend', `<label class="player-note" for="shared-player">Ton prénom<select id="shared-player" required><option value="">Choisir ton prénom</option>${playerOptions}</select></label>`);
+        one('.player-card > p:not(.eyebrow)').insertAdjacentHTML('afterend', `<label class="shared-player-select" for="shared-player">Ton prénom<select id="shared-player" required><option value="">Choisir ton prénom</option>${playerOptions}</select></label>`);
+        form.insertAdjacentHTML('afterend', `<section class="player-questionnaire-section" id="workload-section"><p class="eyebrow">QUESTIONNAIRE 2 · APRÈS LA SÉANCE</p><h2>Charge de travail</h2><p>Indique la durée réelle et l'effort global ressenti.</p><form class="formbox" id="workload-questionnaire"><div id="workload-questions"></div><p class="player-message" id="workload-message" role="status"></p><button class="btn player-submit" id="workload-submit" type="submit">Envoyer ma charge →</button></form></section>`);
       }
-      one('#player-questions').innerHTML = questions.map((question, index) => {
-        let control = '';
-        if (question.type === 'scale') {
-          const values = Array.from({ length: question.scaleMax - question.scaleMin + 1 }, (_, offset) => question.scaleMin + offset);
-          control = `<div class="player-ratings" data-question="${html(question.id)}" role="radiogroup" aria-label="${html(question.prompt)}">${values.map((value) => `<button class="player-rating" type="button" data-value="${value}" aria-pressed="false" aria-label="Note ${value}">${value}</button>`).join('')}</div><small>${html(question.minLabel)} <span aria-hidden="true">→</span> ${html(question.maxLabel)}</small>`;
-        } else if (question.type === 'short_text') {
-          control = `<textarea class="player-answer-text" data-question="${html(question.id)}" maxlength="500" rows="2" aria-label="${html(question.prompt)}"></textarea>`;
-        } else if (question.type === 'single_choice') {
-          control = `<select class="player-answer-choice" data-question="${html(question.id)}" aria-label="${html(question.prompt)}"><option value="">Choisir une réponse</option>${question.options.map((option) => `<option value="${html(option)}">${html(option)}</option>`).join('')}</select>`;
-        }
-        return `<fieldset class="player-question"><legend>0${index + 1} · ${html(question.prompt)}</legend>${question.helpText ? `<p>${html(question.helpText)}</p>` : ''}${control}</fieldset>`;
-      }).join('');
+      function markupFor(questions, kind) {
+        return questions.map((question, index) => {
+          let control = '';
+          if (question.type === 'scale') {
+            const values = Array.from({ length: question.scaleMax - question.scaleMin + 1 }, (_, offset) => question.scaleMin + offset);
+            control = `<div class="player-ratings" data-kind="${kind}" data-question="${html(question.id)}" role="radiogroup" aria-label="${html(question.prompt)}">${values.map((value) => `<button class="player-rating" type="button" data-value="${value}" aria-pressed="false" aria-label="Note ${value}">${value}</button>`).join('')}</div><small>${html(question.minLabel)} <span aria-hidden="true">→</span> ${html(question.maxLabel)}</small>`;
+          } else if (question.type === 'number') {
+            const duration = question.metricKey === 'duration_minutes';
+            control = `<input class="player-answer-number" data-kind="${kind}" data-question="${html(question.id)}" type="number" min="${duration ? 1 : 0}" max="${duration ? 300 : 1000}" step="1" inputmode="numeric" aria-label="${html(question.prompt)}">`;
+          } else if (question.type === 'short_text') {
+            control = `<textarea class="player-answer-text" data-kind="${kind}" data-question="${html(question.id)}" maxlength="500" rows="2" aria-label="${html(question.prompt)}"></textarea>`;
+          } else if (question.type === 'single_choice') {
+            control = `<select class="player-answer-choice" data-kind="${kind}" data-question="${html(question.id)}" aria-label="${html(question.prompt)}"><option value="">Choisir une réponse</option>${question.options.map((option) => `<option value="${html(option)}">${html(option)}</option>`).join('')}</select>`;
+          }
+          return `<fieldset class="player-question"><legend>0${index + 1} · ${html(question.prompt)}</legend>${question.helpText ? `<p>${html(question.helpText)}</p>` : ''}${control}</fieldset>`;
+        }).join('');
+      }
+
+      one('#player-questions').innerHTML = markupFor(wellnessQuestions, 'wellness');
       one('#player-note', form)?.remove();
+      if (sharedToken) one('#workload-questions').innerHTML = markupFor(workloadQuestions, 'workload');
+
+      const answers = { wellness: {}, workload: {} };
+      const forms = {
+        wellness: { form, questions: wellnessQuestions, button: submit, message },
+        workload: sharedToken ? {
+          form: one('#workload-questionnaire'),
+          questions: workloadQuestions,
+          button: one('#workload-submit'),
+          message: one('#workload-message'),
+        } : null,
+      };
+
+      function syncPlayerState() {
+        const player = data.players?.find((item) => item.id === one('#shared-player')?.value);
+        for (const [kind, setup] of Object.entries(forms)) {
+          if (!setup) continue;
+          const done = kind === 'wellness' ? player?.wellnessDone : player?.workloadDone;
+          setup.form.querySelectorAll('input,select,textarea,button.player-rating').forEach((control) => {
+            control.disabled = !player || !!done;
+          });
+          setup.button.disabled = !player || !!done;
+          setup.message.textContent = done ? 'Déjà rempli, merci.' : '';
+        }
+        if (player && player.wellnessDone && player.workloadDone) message.textContent = 'Les deux questionnaires sont remplis. Merci !';
+        else message.textContent = '';
+      }
+
+      if (sharedToken) {
+        one('#shared-player').addEventListener('change', () => {
+          answers.wellness = {};
+          answers.workload = {};
+          form.querySelectorAll('.player-rating').forEach((button) => button.setAttribute('aria-pressed', 'false'));
+          one('#workload-questionnaire').querySelectorAll('.player-rating').forEach((button) => button.setAttribute('aria-pressed', 'false'));
+          form.querySelectorAll('textarea,input,select').forEach((field) => { if (field.id !== 'shared-player') field.value = ''; });
+          one('#workload-questionnaire').querySelectorAll('textarea,input,select').forEach((field) => { field.value = ''; });
+          syncPlayerState();
+        });
+        syncPlayerState();
+      } else {
+        submit.disabled = false;
+      }
 
       many('.player-ratings').forEach((group) => group.addEventListener('click', (event) => {
         const button = event.target.closest('.player-rating');
         if (!button) return;
-        answers[group.dataset.question] = Number(button.dataset.value);
+        answers[group.dataset.kind][group.dataset.question] = Number(button.dataset.value);
         many('.player-rating', group).forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
       }));
-      many('.player-answer-text').forEach((field) => field.addEventListener('input', () => {
-        answers[field.dataset.question] = field.value;
+      many('.player-answer-text,.player-answer-number').forEach((field) => field.addEventListener('input', () => {
+        answers[field.dataset.kind][field.dataset.question] = field.value;
       }));
       many('.player-answer-choice').forEach((field) => field.addEventListener('change', () => {
-        answers[field.dataset.question] = field.value;
+        answers[field.dataset.kind][field.dataset.question] = field.value;
       }));
-      submit.disabled = false;
-      message.textContent = '';
 
-      form.onsubmit = async (event) => {
-        event.preventDefault();
-        const missing = questions.some((question) => question.required
-          && (answers[question.id] === undefined || answers[question.id] === null || answers[question.id] === ''));
-        if (missing) {
-          message.textContent = 'Réponds à toutes les questions avant l’envoi.';
-          return;
-        }
-        if (sharedToken && !one('#shared-player').value) {
-          message.textContent = 'Choisis ton prénom avant l’envoi.';
-          return;
-        }
-        submit.disabled = true;
-        message.textContent = 'Envoi en cours…';
-        const body = sharedToken
-          ? { sharedToken, playerId: one('#shared-player').value, answers }
-          : { token, answers };
-        const result = await client.functions.invoke('submit-wellness', { body });
-        if (result.error) {
-          submit.disabled = false;
-          message.textContent = result.data?.error || 'Envoi impossible. Vérifie ton lien ou préviens le staff.';
-          return;
-        }
-        one('.player-card').innerHTML = '<div class="player-thanks"><p class="eyebrow">RÉPONSE ENREGISTRÉE</p><h1>Merci, c’est envoyé.</h1><p>Tu peux fermer cette page.</p></div>';
-      };
+      for (const [kind, setup] of Object.entries(forms)) {
+        if (!setup) continue;
+        setup.form.onsubmit = async (event) => {
+          event.preventDefault();
+          const missing = setup.questions.some((question) => question.required
+            && (answers[kind][question.id] === undefined || answers[kind][question.id] === null || answers[kind][question.id] === ''));
+          if (missing) {
+            setup.message.textContent = 'Réponds à toutes les questions avant l’envoi.';
+            return;
+          }
+          const selectedPlayer = sharedToken ? one('#shared-player').value : null;
+          if (sharedToken && !selectedPlayer) {
+            message.textContent = 'Choisis ton prénom avant l’envoi.';
+            return;
+          }
+          const buttonLabel = setup.button.textContent;
+          setup.button.disabled = true;
+          setup.message.textContent = 'Envoi en cours…';
+          const body = sharedToken
+            ? { sharedToken, playerId: selectedPlayer, questionnaire: kind, answers: answers[kind] }
+            : { token, questionnaire: kind, answers: answers[kind] };
+          const result = await client.functions.invoke('submit-wellness', { body });
+          if (result.error) {
+            setup.button.disabled = false;
+            setup.message.textContent = result.data?.error || 'Envoi impossible. Préviens le staff.';
+            return;
+          }
+          setup.button.textContent = 'Envoyé';
+          setup.message.textContent = 'Réponses enregistrées.';
+          const player = data.players?.find((item) => item.id === selectedPlayer);
+          if (player) {
+            if (kind === 'wellness') player.wellnessDone = true;
+            else player.workloadDone = true;
+            syncPlayerState();
+          }
+        };
+      }
       window.WellnessPlayerReady = true;
     });
     return;
@@ -100,7 +163,7 @@
 
   const login = one('#admin-login');
   if (!login) return;
-  let admin = { players: [], questions: [], sessions: [], responses: [], attendance: [] };
+  let admin = { players: [], questions: [], workloadQuestions: [], sessions: [], responses: [], workloadResponses: [], attendance: [] };
   let activeTab = 'sessions';
   let selectedSessionId = '';
   let detailSessionId = '';
@@ -156,16 +219,26 @@
   }
 
   async function loadAdmin() {
-    const [players, questions, sessions, responses, attendance] = await Promise.all([
+    const [players, questions, workloadQuestions, sessions, responses, workloadResponses, attendance] = await Promise.all([
       client.from('players').select('id,display_name,position,shirt_number,active,created_at').order('display_name'),
       client.from('questionnaire_questions').select('id,prompt,help_text,question_type,required,scale_min,scale_max,min_label,max_label,options,sort_order,active').order('sort_order'),
-      client.from('sessions').select('id,title,session_date,session_type,status,shared_token,form_snapshot,created_at').order('created_at', { ascending: false }),
+      client.from('workload_questions').select('id,prompt,help_text,question_type,metric_key,required,scale_min,scale_max,min_label,max_label,options,sort_order,active').order('sort_order'),
+      client.from('sessions').select('id,title,session_date,session_type,status,shared_token,form_snapshot,workload_snapshot,created_at').order('created_at', { ascending: false }),
       client.from('wellness_responses').select('id,session_id,player_id,answers,note,submitted_at').order('submitted_at', { ascending: false }),
+      client.from('workload_responses').select('id,session_id,player_id,answers,duration_minutes,rpe,training_load,submitted_at').order('submitted_at', { ascending: false }),
       client.from('session_attendance').select('session_id,player_id,status,source,updated_at'),
     ]);
-    const error = players.error || questions.error || sessions.error || responses.error || attendance.error;
+    const error = players.error || questions.error || workloadQuestions.error || sessions.error || responses.error || workloadResponses.error || attendance.error;
     if (error) throw error;
-    admin = { players: players.data || [], questions: questions.data || [], sessions: sessions.data || [], responses: responses.data || [], attendance: attendance.data || [] };
+    admin = {
+      players: players.data || [],
+      questions: questions.data || [],
+      workloadQuestions: workloadQuestions.data || [],
+      sessions: sessions.data || [],
+      responses: responses.data || [],
+      workloadResponses: workloadResponses.data || [],
+      attendance: attendance.data || [],
+    };
     if (!selectedSessionId || !admin.sessions.some((session) => session.id === selectedSessionId)) {
       selectedSessionId = admin.sessions[0]?.id || '';
     }
@@ -176,10 +249,13 @@
     one('.shell').hidden = true;
     let root = one('#secure-admin');
     if (!root) {
-      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="questions">Questionnaire</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
+      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="workload">Charge & RPE</button><button data-tab="questions">Questionnaire wellness</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
       root = one('#secure-admin');
       root.addEventListener('click', handleAction);
-      root.addEventListener('change', handleAttendanceChange);
+      root.addEventListener('change', (event) => {
+        if (event.target.closest('select[data-attendance]')) handleAttendanceChange(event);
+        else if (event.target.closest('.secure-answer-edit')) handleAnswerChange(event);
+      });
       many('.secure-nav button', root).forEach((button) => button.addEventListener('click', () => {
         activeTab = button.dataset.tab;
         detailSessionId = '';
@@ -199,6 +275,7 @@
     if (activeTab === 'questions') content.innerHTML = renderQuestions();
     else if (activeTab === 'players') content.innerHTML = renderPlayers();
     else if (activeTab === 'attendance') content.innerHTML = renderAttendance();
+    else if (activeTab === 'workload') content.innerHTML = renderWorkload();
     else content.innerHTML = detailSessionId ? renderSessionDetail(detailSessionId) : renderSessions();
   }
 
@@ -277,6 +354,25 @@
     return `<div class="wellness-alert" role="alert" aria-live="polite"><div><strong>Alerte wellness · ${redPlayers.length} joueur${redPlayers.length === 1 ? '' : 's'} en rouge</strong><p>${list}. Alléger ou remplacer la séance par de la récupération.</p></div></div>`;
   }
 
+  function answerControl(kind, session, player, question, value) {
+    if (value === undefined || value === null) return '<td>—</td>';
+    const data = `class="secure-answer-edit" data-answer-kind="${kind}" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" data-question-id="${html(question.id)}"`;
+    if (question.type === 'scale') {
+      const options = Array.from({ length: question.scaleMax - question.scaleMin + 1 }, (_, index) => question.scaleMin + index)
+        .map((number) => `<option value="${number}" ${Number(value) === number ? 'selected' : ''}>${number}</option>`).join('');
+      return `<td><select ${data} aria-label="${html(question.prompt)}">${options}</select></td>`;
+    }
+    if (question.type === 'single_choice') {
+      const options = (question.options || []).map((option) => `<option value="${html(option)}" ${value === option ? 'selected' : ''}>${html(option)}</option>`).join('');
+      return `<td><select ${data} aria-label="${html(question.prompt)}"><option value="">—</option>${options}</select></td>`;
+    }
+    if (question.type === 'number') {
+      const duration = question.metricKey === 'duration_minutes';
+      return `<td><input ${data} type="number" min="${duration ? 1 : 0}" max="${duration ? 300 : 10}" step="1" value="${html(value)}" aria-label="${html(question.prompt)}"></td>`;
+    }
+    return `<td><input ${data} type="text" maxlength="500" value="${html(value)}" aria-label="${html(question.prompt)}"></td>`;
+  }
+
   function renderResults(session) {
     const questions = Array.isArray(session.form_snapshot) ? session.form_snapshot : [];
     const responsesByPlayer = new Map(admin.responses.filter((item) => item.session_id === session.id).map((item) => [item.player_id, item]));
@@ -287,11 +383,32 @@
       const response = responsesByPlayer.get(player.id);
       const value = attendanceByPlayer.get(player.id)?.status || (response ? 'present' : '');
       const options = `<option value="" ${!value ? 'selected' : ''}>À confirmer</option>${attendanceChoices(session).map(([status, label]) => `<option value="${status}" ${value === status ? 'selected' : ''}>${label}</option>`).join('')}`;
-      const answers = questions.map((question) => `<td>${html(response?.answers?.[question.id] ?? '—')}</td>`).join('');
+      const answers = questions.map((question) => answerControl('wellness', session, player, question, response?.answers?.[question.id])).join('');
       const wellness = response ? wellnessCells(wellnessFor(session, response)) : '<td class="secure-muted">—</td><td class="secure-muted">—</td>';
-      return `<tr><td><strong>${html(player.display_name)}</strong>${player.active ? '' : ' <span class="secure-muted">(retiré)</span>'}</td><td><select class="secure-attendance" data-attendance="true" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" aria-label="Présence de ${html(player.display_name)}">${options}</select></td><td><span class="secure-tag">${response ? 'Répondu' : 'En attente'}</span></td>${wellness}${answers}<td>${response?.note ? html(response.note) : '—'}</td></tr>`;
+      const note = response
+        ? `<input class="secure-answer-edit" data-answer-kind="wellness" data-answer-note="true" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" type="text" maxlength="240" value="${html(response.note || '')}" aria-label="Note au staff de ${html(player.display_name)}">`
+        : '—';
+      const wellnessStatus = response
+        ? '<span class="secure-tag">Répondu</span>'
+        : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-wellness" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
+      return `<tr><td><strong>${html(player.display_name)}</strong>${player.active ? '' : ' <span class="secure-muted">(retiré)</span>'}</td><td><select class="secure-attendance" data-attendance="true" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" aria-label="Présence de ${html(player.display_name)}">${options}</select></td><td><div class="secure-actions">${wellnessStatus}</div></td>${wellness}${answers}<td>${note}</td></tr>`;
     }).join('');
-    return `${renderWellnessAlert(session)}<div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>${isMatch(session) ? 'CONVOCATION' : 'PRÉSENCE'}</th><th>QUESTIONNAIRE</th><th>WELLNESS</th><th>ÉTAT</th>${headers}<th>NOTE AU STAFF</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div>`;
+    return `${renderWellnessAlert(session)}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">WELLNESS</p><h2>Réponses et état de forme</h2><p>Modifie une réponse directement dans sa cellule.</p></div></div><div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>${isMatch(session) ? 'CONVOCATION' : 'PRÉSENCE'}</th><th>QUESTIONNAIRE</th><th>WELLNESS</th><th>ÉTAT</th>${headers}<th>NOTE AU STAFF</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div></section>${renderWorkloadResults(session)}`;
+  }
+
+  function renderWorkloadResults(session) {
+    const questions = Array.isArray(session.workload_snapshot) ? session.workload_snapshot : [];
+    const responsesByPlayer = new Map(admin.workloadResponses.filter((item) => item.session_id === session.id).map((item) => [item.player_id, item]));
+    const players = admin.players.filter((player) => player.active || responsesByPlayer.has(player.id));
+    const headers = questions.map((question) => `<th>${html(question.prompt)}</th>`).join('');
+    const rows = players.map((player) => {
+      const response = responsesByPlayer.get(player.id);
+      const values = questions.map((question) => answerControl('workload', session, player, question, response?.answers?.[question.id])).join('');
+      const load = response ? `${fr(response.training_load, 0)} UA` : '—';
+      const status = response ? '<span class="secure-tag">Répondu</span>' : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-workload" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}<td><strong>${load}</strong></td></tr>`;
+    }).join('');
+    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE DE TRAVAIL</p><h2>Durée, RPE et charge</h2><p>Charge de séance = durée (minutes) × RPE. Modifie les valeurs directement dans le tableau.</p></div></div><div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>QUESTIONNAIRE</th>${headers}<th>CHARGE</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
   }
 
   function renderSessionDetail(sessionId) {
@@ -331,6 +448,39 @@
     return `<div class="secure-title"><div><p class="eyebrow">SUIVI DE LA PRÉSENCE</p><h1>Taux de présence</h1><p>Séances passées uniquement. Pour les matchs, le taux compte les joueurs convoqués sur tous les matchs enregistrés.</p></div></div><section class="secure-panel"><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>ENTRAÎNEMENTS</th><th>TAUX</th><th>MATCHS CONVOQUÉ</th><th>TAUX</th><th>ABSENT</th><th>NON CONVOQUÉ</th><th>BLESSÉ</th><th>U15D2</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="secure-muted">Aucun joueur actif dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
   }
 
+  function renderWorkload() {
+    const sessionsById = new Map(admin.sessions.map((session) => [session.id, session]));
+    const today = todayKey();
+    const playerRows = admin.players.filter((player) => player.active).map((player) => {
+      const entries = admin.workloadResponses
+        .filter((response) => response.player_id === player.id)
+        .map((response) => ({ response, session: sessionsById.get(response.session_id) }))
+        .filter(({ session }) => session && session.session_date <= today)
+        .sort((a, b) => a.session.session_date.localeCompare(b.session.session_date));
+      const daily = new Map();
+      for (const { response, session } of entries) {
+        daily.set(session.session_date, (daily.get(session.session_date) || 0) + Number(response.training_load || 0));
+      }
+      const dayValues = (days) => Array.from({ length: days }, (_, offset) => {
+        const date = new Date(`${today}T12:00:00`);
+        date.setDate(date.getDate() - (days - offset - 1));
+        return daily.get(date.toLocaleDateString('sv-SE')) || 0;
+      });
+      const recent7 = dayValues(7);
+      const weeklyLoad = recent7.reduce((sum, value) => sum + value, 0);
+      const mean7 = weeklyLoad / 7;
+      const deviation7 = Math.sqrt(recent7.reduce((sum, value) => sum + (value - mean7) ** 2, 0) / 7);
+      const monotony = deviation7 > 0 ? mean7 / deviation7 : null;
+      const fitnessLoad = dayValues(28).reduce((sum, value) => sum + value, 0) / 4;
+      const latest = entries.at(-1)?.response;
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td>${fr(weeklyLoad, 0)} UA</td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${fr(fitnessLoad, 0)} UA/sem.</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
+    }).join('');
+    const active = admin.workloadQuestions.filter((question) => question.active);
+    const archived = admin.workloadQuestions.filter((question) => !question.active);
+    const questionRow = (question) => `<tr><td><strong>${html(question.prompt)}</strong><div class="secure-muted">${html(question.help_text)}</div></td><td>${question.metric_key === 'duration_minutes' ? 'Durée · charge' : question.metric_key === 'rpe' ? 'RPE · charge' : question.question_type === 'scale' ? `Échelle ${question.scale_min}–${question.scale_max}` : question.question_type === 'number' ? 'Nombre' : question.question_type === 'short_text' ? 'Texte court' : 'Choix unique'}</td><td><div class="secure-actions"><button class="btn button-secondary secure-small" data-action="edit-workload-question" data-id="${html(question.id)}">Modifier</button>${question.metric_key ? '<span class="secure-muted">Indispensable au calcul</span>' : `<button class="btn button-secondary secure-small" data-action="${question.active ? 'archive-workload-question' : 'restore-workload-question'}" data-id="${html(question.id)}">${question.active ? 'Retirer' : 'Restaurer'}</button>`}</div></td></tr>`;
+    return `<div class="secure-title"><div><p class="eyebrow">CHARGE INTERNE · SUIVI U14</p><h1>Charge & RPE</h1><p>Charge séance = durée en minutes × RPE. UA = unités arbitraires.</p></div></div>${wellnessLegend()}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Monotonie et fitness</h2><p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th></tr></thead><tbody>${playerRows || '<tr><td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.</td></tr>'}</tbody></table></div></section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">MODÈLE DES PROCHAINES SÉANCES</p><h2>Questionnaire de charge</h2><p>La durée et le RPE sont nécessaires au calcul. Les autres questions peuvent être ajoutées ou retirées.</p></div><button class="btn" data-action="new-workload-question">+ Ajouter une question</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>QUESTION</th><th>TYPE / INDICATEUR</th><th></th></tr></thead><tbody>${active.map(questionRow).join('') || '<tr><td colspan="3" class="secure-muted">Ajoute les questions du questionnaire de charge.</td></tr>'}</tbody></table></div></section>${archived.length ? `<section class="secure-panel"><p class="eyebrow">QUESTIONS RETIRÉES</p><div class="tablewrap"><table class="secure-table"><tbody>${archived.map(questionRow).join('')}</tbody></table></div></section>` : ''}`;
+  }
+
   function renderSessions() {
     const selected = admin.sessions.find((session) => session.id === selectedSessionId);
     const responseCount = selected ? admin.responses.filter((response) => response.session_id === selected.id).length : 0;
@@ -365,6 +515,65 @@
     return `<div class="secure-title"><div><p class="eyebrow">EFFECTIF DU GROUPE</p><h1>Joueurs U14</h1><p>Retirer un joueur l’archive de l’effectif sans effacer ses anciennes réponses.</p></div><button class="btn" data-action="new-player">+ Ajouter un joueur</button></div><section class="secure-panel"><div class="secure-actions" style="margin-bottom:12px"><button class="btn ${!showArchivedPlayers?'':'button-secondary'} secure-small" data-action="show-active">Effectif actif</button><button class="btn ${showArchivedPlayers?'':'button-secondary'} secure-small" data-action="show-archived">Joueurs retirés</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>N°</th><th>POSTE</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="secure-muted">Aucun joueur dans cette liste.</td></tr>'}</tbody></table></div></section>`;
   }
 
+  function openManualResponseDialog(sessionId, playerId, kind) {
+    const session = admin.sessions.find((item) => item.id === sessionId);
+    const player = admin.players.find((item) => item.id === playerId);
+    const questions = kind === 'workload' ? session?.workload_snapshot || [] : session?.form_snapshot || [];
+    if (!session || !player || !questions.length) return;
+    const title = kind === 'workload' ? 'Saisie manuelle · charge' : 'Saisie manuelle · wellness';
+    const fields = questions.map((question, index) => {
+      const required = question.required ? 'required' : '';
+      let control = '';
+      if (question.type === 'scale') {
+        const values = Array.from({ length: question.scaleMax - question.scaleMin + 1 }, (_, offset) => question.scaleMin + offset);
+        control = `<select data-entry-question="${html(question.id)}" ${required}><option value="">Choisir</option>${values.map((value) => `<option value="${value}">${value}</option>`).join('')}</select>`;
+      } else if (question.type === 'number') {
+        const duration = question.metricKey === 'duration_minutes';
+        control = `<input data-entry-question="${html(question.id)}" type="number" min="${duration ? 1 : 0}" max="${duration ? 300 : 1000}" step="1" ${required}>`;
+      } else if (question.type === 'single_choice') {
+        control = `<select data-entry-question="${html(question.id)}" ${required}><option value="">Choisir</option>${question.options.map((option) => `<option value="${html(option)}">${html(option)}</option>`).join('')}</select>`;
+      } else {
+        control = `<textarea data-entry-question="${html(question.id)}" maxlength="500" rows="2" ${required}></textarea>`;
+      }
+      return `<label class="secure-field">${index + 1}. ${html(question.prompt)}${control}</label>`;
+    }).join('');
+    const dialog = openDialog(`<form id="manual-response-form"><h2>${title}</h2><p>${html(player.display_name)} · ${dateText(session.session_date)} · ${html(session.title)}</p>${fields}${kind === 'wellness' ? '<label class="secure-field">Note au staff<textarea name="note" maxlength="240" rows="2"></textarea></label>' : ''}<p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Enregistrer</button></div></form>`);
+    one('#manual-response-form', dialog).onsubmit = async (event) => {
+      event.preventDefault();
+      const answers = {};
+      for (const question of questions) {
+        const field = one(`[data-entry-question="${question.id}"]`, dialog);
+        const value = field.value;
+        if (question.required && value === '') {
+          one('#dialog-error', dialog).textContent = 'Complète les réponses requises avant l’enregistrement.';
+          return;
+        }
+        if (value !== '') answers[question.id] = question.type === 'scale' || question.type === 'number' ? Number(value) : value;
+      }
+      let result;
+      if (kind === 'workload') {
+        const durationQuestion = questions.find((question) => question.metricKey === 'duration_minutes');
+        const rpeQuestion = questions.find((question) => question.metricKey === 'rpe');
+        const duration = Number(durationQuestion && answers[durationQuestion.id]);
+        const rpe = Number(rpeQuestion && answers[rpeQuestion.id]);
+        if (!durationQuestion || !rpeQuestion || !Number.isInteger(duration) || duration < 1 || duration > 300 || !Number.isFinite(rpe) || rpe < 0 || rpe > 10) {
+          one('#dialog-error', dialog).textContent = 'Vérifie la durée et le RPE avant l’enregistrement.';
+          return;
+        }
+        result = await client.from('workload_responses').insert({ session_id: session.id, player_id: player.id, answers, duration_minutes: duration, rpe });
+      } else {
+        result = await client.from('wellness_responses').insert({ session_id: session.id, player_id: player.id, answers, note: one('[name="note"]', dialog)?.value.trim() || '' });
+      }
+      if (result.error) {
+        one('#dialog-error', dialog).textContent = 'Enregistrement impossible. Une réponse existe peut-être déjà.';
+        return;
+      }
+      dialog.close();
+      await loadAdmin();
+      renderAdmin();
+    };
+  }
+
   function openDialog(markup) {
     const old = one('#secure-dialog');
     old?.remove();
@@ -397,6 +606,39 @@
     await loadAdmin();
     renderAdmin();
     toast('Présence mise à jour.');
+  }
+
+  async function handleAnswerChange(event) {
+    const field = event.target.closest('.secure-answer-edit');
+    if (!field) return;
+    const { answerKind, sessionId, playerId, questionId } = field.dataset;
+    let result;
+    if (answerKind === 'wellness') {
+      const response = admin.responses.find((item) => item.session_id === sessionId && item.player_id === playerId);
+      if (!response) return;
+      const values = field.dataset.answerNote
+        ? { note: field.value }
+        : { answers: { ...response.answers, [questionId]: field.type === 'number' ? Number(field.value) : field.tagName === 'SELECT' && field.value !== '' && !Number.isNaN(Number(field.value)) ? Number(field.value) : field.value } };
+      result = await client.from('wellness_responses').update(values).eq('id', response.id);
+    } else {
+      const response = admin.workloadResponses.find((item) => item.session_id === sessionId && item.player_id === playerId);
+      const session = admin.sessions.find((item) => item.id === sessionId);
+      if (!response || !session) return;
+      const question = session.workload_snapshot?.find((item) => item.id === questionId);
+      const value = field.type === 'number' ? Number(field.value) : field.tagName === 'SELECT' && field.value !== '' && !Number.isNaN(Number(field.value)) ? Number(field.value) : field.value;
+      const answers = { ...response.answers, [questionId]: value };
+      const values = { answers };
+      if (question?.metricKey === 'duration_minutes') values.duration_minutes = value;
+      if (question?.metricKey === 'rpe') values.rpe = value;
+      result = await client.from('workload_responses').update(values).eq('id', response.id);
+    }
+    if (result?.error) {
+      toast('Impossible d’enregistrer cette réponse.');
+      return;
+    }
+    await loadAdmin();
+    renderAdmin();
+    toast('Réponse mise à jour.');
   }
 
   function openSessionDialog(session) {
@@ -513,6 +755,58 @@
     };
   }
 
+  function openWorkloadQuestionDialog(question) {
+    const editing = !!question;
+    const metricKey = question?.metric_key || null;
+    const selectedType = question?.question_type || 'short_text';
+    const dialog = openDialog(`<form id="workload-question-form"><h2>${editing ? 'Modifier la question charge' : 'Ajouter une question charge'}</h2><label class="secure-field">Question<input name="prompt" required maxlength="180" value="${html(question?.prompt || '')}"></label><label class="secure-field">Aide ou précision<textarea name="help_text" maxlength="240" rows="2">${html(question?.help_text || '')}</textarea></label>${metricKey ? `<p class="secure-tag">Champ de calcul protégé : ${metricKey === 'rpe' ? 'RPE' : 'durée'}</p>` : `<label class="secure-field">Type de réponse<select name="question_type"><option value="short_text" ${selectedType === 'short_text' ? 'selected' : ''}>Texte court</option><option value="number" ${selectedType === 'number' ? 'selected' : ''}>Nombre</option><option value="scale" ${selectedType === 'scale' ? 'selected' : ''}>Échelle chiffrée</option><option value="single_choice" ${selectedType === 'single_choice' ? 'selected' : ''}>Choix unique</option></select></label>`}<div class="scale-fields"><label class="secure-field">Minimum<input name="scale_min" type="number" min="0" max="9" value="${question?.scale_min ?? 1}"></label><label class="secure-field">Maximum<input name="scale_max" type="number" min="1" max="10" value="${question?.scale_max ?? 5}"></label><label class="secure-field">Libellé du minimum<input name="min_label" maxlength="40" value="${html(question?.min_label || '')}"></label><label class="secure-field">Libellé du maximum<input name="max_label" maxlength="40" value="${html(question?.max_label || '')}"></label></div><label class="secure-field choice-fields" hidden>Choix (un par ligne)<textarea name="options" rows="4">${html((question?.options || []).join('\n'))}</textarea></label><label class="secure-check"><input name="required" type="checkbox" ${question?.required !== false ? 'checked' : ''}> Réponse requise</label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Enregistrer</button></div></form>`);
+    const form = one('#workload-question-form', dialog);
+    const toggleType = () => {
+      const type = metricKey === 'rpe' ? 'scale' : metricKey === 'duration_minutes' ? 'number' : form.elements.question_type.value;
+      one('.scale-fields', form).hidden = type !== 'scale';
+      one('.choice-fields', form).hidden = type !== 'single_choice';
+    };
+    if (!metricKey) form.elements.question_type.onchange = toggleType;
+    toggleType();
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const type = metricKey === 'rpe' ? 'scale' : metricKey === 'duration_minutes' ? 'number' : form.elements.question_type.value;
+      const options = type === 'single_choice' ? form.elements.options.value.split('\n').map((value) => value.trim()).filter(Boolean) : [];
+      const values = {
+        prompt: form.elements.prompt.value.trim(),
+        help_text: form.elements.help_text.value.trim(),
+        question_type: type,
+        metric_key: metricKey,
+        required: metricKey ? true : form.elements.required.checked,
+        scale_min: type === 'scale' ? Number(form.elements.scale_min.value) : null,
+        scale_max: type === 'scale' ? Number(form.elements.scale_max.value) : null,
+        min_label: type === 'scale' ? form.elements.min_label.value.trim() : '',
+        max_label: type === 'scale' ? form.elements.max_label.value.trim() : '',
+        options,
+        active: question?.active ?? true,
+        sort_order: question?.sort_order ?? admin.workloadQuestions.length + 1,
+      };
+      if (type === 'scale' && (values.scale_min >= values.scale_max || values.scale_min < 0 || values.scale_max > 10)) {
+        one('#dialog-error', dialog).textContent = 'Choisis une échelle croissante entre 0 et 10.';
+        return;
+      }
+      if (type === 'single_choice' && (options.length < 2 || options.length > 10)) {
+        one('#dialog-error', dialog).textContent = 'Ajoute entre 2 et 10 choix.';
+        return;
+      }
+      const result = editing
+        ? await client.from('workload_questions').update(values).eq('id', question.id)
+        : await client.from('workload_questions').insert(values);
+      if (result.error) {
+        one('#dialog-error', dialog).textContent = 'Enregistrement impossible. Vérifie les champs.';
+        return;
+      }
+      dialog.close();
+      await loadAdmin();
+      renderAdmin();
+    };
+  }
+
   function openPlayerDialog(player) {
     const editing = !!player;
     const dialog = openDialog(`<form id="player-edit-form"><h2>${editing ? 'Modifier la fiche joueur' : 'Ajouter un joueur U14'}</h2><label class="secure-field">Nom et prénom<input name="display_name" required maxlength="80" value="${html(player?.display_name || '')}"></label><label class="secure-field">Poste<input name="position" maxlength="40" value="${html(player?.position || '')}" placeholder="Ex. Milieu"></label><label class="secure-field">Numéro de maillot<input name="shirt_number" type="number" min="1" max="99" value="${player?.shirt_number ?? ''}"></label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Enregistrer</button></div></form>`);
@@ -543,6 +837,15 @@
     else if (action === 'delete-session') openDeleteSessionDialog(admin.sessions.find((item) => item.id === id));
     else if (action === 'new-question') openQuestionDialog();
     else if (action === 'edit-question') openQuestionDialog(admin.questions.find((item) => item.id === id));
+    else if (action === 'new-workload-question') openWorkloadQuestionDialog();
+    else if (action === 'edit-workload-question') openWorkloadQuestionDialog(admin.workloadQuestions.find((item) => item.id === id));
+    else if (action === 'enter-wellness') openManualResponseDialog(button.dataset.sessionId, button.dataset.playerId, 'wellness');
+    else if (action === 'enter-workload') openManualResponseDialog(button.dataset.sessionId, button.dataset.playerId, 'workload');
+    else if (action === 'archive-workload-question' || action === 'restore-workload-question') {
+      const { error } = await client.from('workload_questions').update({ active: action === 'restore-workload-question' }).eq('id', id);
+      if (error) toast('Impossible de modifier la question charge.');
+      else { await loadAdmin(); renderAdmin(); }
+    }
     else if (action === 'new-player') openPlayerDialog();
     else if (action === 'edit-player') openPlayerDialog(admin.players.find((item) => item.id === id));
     else if (action === 'view-session') { selectedSessionId = id; detailSessionId = id; activeTab = 'sessions'; renderAdmin(); window.scrollTo(0, 0); }
