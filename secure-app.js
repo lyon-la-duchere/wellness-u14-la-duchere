@@ -282,7 +282,20 @@
   function renderAdmin() {
     many('.secure-nav button').forEach((button) => button.classList.toggle('active', button.dataset.tab === activeTab));
     const content = one('#secure-content');
-    if (activeTab === 'questions') content.innerHTML = renderQuestions();
+    if (activeTab === 'questions') {
+      content.innerHTML = renderQuestions();
+      content.querySelectorAll('.secure-panel').forEach((panel) => {
+        if (panel.querySelector('.eyebrow')?.textContent.includes('QUESTIONS RETIRÉES')) panel.remove();
+      });
+      const workloadContent = document.createElement('div');
+      workloadContent.innerHTML = renderWorkload();
+      [...workloadContent.querySelectorAll('.secure-panel')]
+        .filter((panel) => {
+          const label = panel.querySelector('.eyebrow')?.textContent || '';
+          return label.includes('MODÈLE DES PROCHAINES SÉANCES') || label.includes('QUESTIONS RETIRÉES');
+        })
+        .forEach((panel) => content.append(panel));
+    }
     else if (activeTab === 'players') content.innerHTML = renderPlayers();
     else if (activeTab === 'attendance') content.innerHTML = renderAttendance();
     else if (activeTab === 'workload') {
@@ -292,6 +305,10 @@
         .replace('<th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th>', '<th>SÉANCE</th><th>TYPE</th><th>DURÉE · STAFF</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th>')
         .replace('<td colspan="6" class="secure-muted">Aucune séance créée.', '<td colspan="7" class="secure-muted">Aucune séance créée.')
         .replace('<p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p>', '<p>Charge hebdomadaire comparée à la moyenne individuelle des 4 semaines précédentes : bleu sous 0,8×, vert de 0,8× à 1,3×, rouge au-dessus de 1,3×. Une durée manquante ou moins de 3 semaines mesurées laisse la zone neutre. Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours.</p>');
+      content.querySelectorAll('.secure-panel').forEach((panel) => {
+        const label = panel.querySelector('.eyebrow')?.textContent || '';
+        if (label.includes('MODÈLE DES PROCHAINES SÉANCES') || label.includes('QUESTIONS RETIRÉES')) panel.remove();
+      });
       content.insertAdjacentHTML('afterbegin', workloadChartSection);
     }
     else content.innerHTML = detailSessionId ? renderSessionDetail(detailSessionId) : renderSessions();
@@ -477,6 +494,7 @@
   function renderWorkload() {
     const sessionsById = new Map(admin.sessions.map((session) => [session.id, session]));
     const today = todayKey();
+    const playerMetrics = [];
     const playerRows = admin.players.filter((player) => player.active).map((player) => {
       const entries = admin.workloadResponses
         .filter((response) => response.player_id === player.id)
@@ -536,6 +554,7 @@
         : ratio < 0.8 ? 'load-under' : ratio > 1.3 ? 'load-over' : 'load-normal';
       const loadLabel = { 'load-pending': 'À compléter', 'load-under': 'Sous-charge', 'load-normal': 'Dans la moyenne', 'load-over': 'Surcharge' }[loadState];
       const latest = entries.at(-1)?.response;
+      playerMetrics.push({ name: player.display_name, load: weeklyLoad, state: loadState, label: loadLabel });
       return `<tr><td><strong>${html(player.display_name)}</strong></td><td><strong class="${loadState}">${fr(weeklyLoad, 0)} UA</strong></td><td>${fr(weeklyAverage, 0)} UA</td><td><span class="load-state ${loadState}">${loadLabel}</span></td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
     }).join('');
     const workloadSessions = [...admin.sessions].sort((a, b) => b.session_date.localeCompare(a.session_date));
@@ -551,40 +570,29 @@
       const duration = `<input class="secure-session-duration" data-session-id="${html(session.id)}" type="number" min="1" max="300" step="1" value="${html(session.duration_minutes ?? '')}" aria-label="Durée de ${html(session.title)} en minutes">`;
       return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${duration}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${average('training_load')}${hasLoad ? ' UA' : ''}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
     }).join('');
-    const activePlayers = admin.players.filter((player) => player.active);
-    const chartPlayer = activePlayers.find((player) => player.id === selectedWorkloadPlayerId) || activePlayers[0];
-    selectedWorkloadPlayerId = chartPlayer?.id || '';
-    const chartEntries = admin.workloadResponses
-      .filter((response) => response.player_id === selectedWorkloadPlayerId && response.training_load != null)
-      .map((response) => ({ response, session: sessionsById.get(response.session_id) }))
-      .filter(({ session }) => !!session)
-      .sort((a, b) => a.session.session_date.localeCompare(b.session.session_date));
-    const chartWidth = Math.max(480, chartEntries.length * 82 + 72);
-    const chartHeight = 238;
-    const chartLeft = 52;
-    const chartTop = 18;
-    const chartBottom = 178;
-    const chartLimit = Math.max(100, Math.ceil(Math.max(0, ...chartEntries.map(({ response }) => Number(response.training_load))) / 100) * 100);
-    const chartPlotWidth = chartWidth - chartLeft - 18;
-    const chartPlotHeight = chartBottom - chartTop;
-    const chartGrid = [0, 0.5, 1].map((fraction) => {
-      const y = chartBottom - fraction * chartPlotHeight;
-      return `<line x1="${chartLeft}" y1="${y}" x2="${chartWidth - 18}" y2="${y}" stroke="#e2e8e1"/><text x="${chartLeft - 8}" y="${y + 4}" text-anchor="end" fill="#7d8981" font-size="10">${fr(chartLimit * fraction, 0)}</text>`;
+    const rankedPlayers = playerMetrics.sort((a, b) => b.load - a.load || a.name.localeCompare(b.name, 'fr'));
+    const rankingWidth = 760;
+    const rankingLeft = 170;
+    const rankingRight = 58;
+    const rankingTop = 28;
+    const rankingRowHeight = 32;
+    const rankingHeight = Math.max(108, rankedPlayers.length * rankingRowHeight + 42);
+    const rankingPlotWidth = rankingWidth - rankingLeft - rankingRight;
+    const rankingMax = Math.max(1, ...rankedPlayers.map((player) => player.load));
+    const rankingGrid = [0, 0.5, 1].map((fraction) => {
+      const x = rankingLeft + fraction * rankingPlotWidth;
+      return `<line x1="${x}" y1="${rankingTop - 8}" x2="${x}" y2="${rankingHeight - 22}" stroke="#e2e8e1"/><text x="${x}" y="16" text-anchor="middle" fill="#7d8981" font-size="10">${fr(rankingMax * fraction, 0)}</text>`;
     }).join('');
-    const chartBars = chartEntries.map(({ response, session }, index) => {
-      const slot = chartPlotWidth / chartEntries.length;
-      const barWidth = Math.min(34, slot * 0.55);
-      const x = chartLeft + index * slot + (slot - barWidth) / 2;
-      const barHeight = Number(response.training_load) / chartLimit * chartPlotHeight;
-      const y = chartBottom - barHeight;
-      const title = session.title.length > 10 ? `${session.title.slice(0, 9)}…` : session.title;
-      return `<g><title>${html(session.title)} · ${dateText(session.session_date)} · ${fr(response.training_load, 0)} UA · RPE ${fr(response.rpe, 1)}</title><rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="#8e1b2c"/><text x="${x + barWidth / 2}" y="${Math.max(chartTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="10">${fr(response.training_load, 0)}</text><text x="${x + barWidth / 2}" y="${chartBottom + 18}" text-anchor="middle" fill="#58665d" font-size="10">${html(title)}</text><text x="${x + barWidth / 2}" y="${chartBottom + 34}" text-anchor="middle" fill="#7d8981" font-size="9">${dateText(session.session_date)}</text></g>`;
+    const rankingColors = { 'load-under': '#3b82c4', 'load-normal': '#4f8d5d', 'load-over': '#c65343', 'load-pending': '#a7b0aa' };
+    const rankingBars = rankedPlayers.map((player, index) => {
+      const y = rankingTop + index * rankingRowHeight;
+      const barWidth = player.load > 0 ? player.load / rankingMax * rankingPlotWidth : 0;
+      return `<g><title>${html(player.name)} · ${fr(player.load, 0)} UA · ${player.label}</title><text x="12" y="${y + 15}" fill="#7d8981" font-size="10">${index + 1}.</text><text x="35" y="${y + 15}" fill="#1d2c26" font-size="11">${html(player.name)}</text><rect x="${rankingLeft}" y="${y}" width="${barWidth}" height="20" rx="2" fill="${rankingColors[player.state]}"/><text x="${rankingLeft + barWidth + 8}" y="${y + 14}" fill="#1d2c26" font-size="10">${fr(player.load, 0)} UA</text></g>`;
     }).join('');
-    const chart = chartEntries.length
-      ? `<svg class="workload-chart" width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="Charge d’entraînement par séance pour ${html(chartPlayer.display_name)}"><title>Charge d’entraînement par séance · ${html(chartPlayer.display_name)}</title>${chartGrid}${chartBars}<text x="14" y="${chartTop + chartPlotHeight / 2}" transform="rotate(-90 14 ${chartTop + chartPlotHeight / 2})" text-anchor="middle" fill="#58665d" font-size="10">UA</text></svg>`
-      : `<p class="workload-chart-empty">${admin.workloadResponses.some((response) => response.player_id === selectedWorkloadPlayerId) ? 'Le RPE est enregistré; le staff doit renseigner la durée pour calculer la charge.' : 'Aucune charge calculable pour ce joueur.'}</p>`;
-    const chartPlayerOptions = activePlayers.map((player) => `<option value="${html(player.id)}" ${player.id === selectedWorkloadPlayerId ? 'selected' : ''}>${html(player.display_name)}</option>`).join('');
-    workloadChartSection = `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE D’ENTRAÎNEMENT</p><h2>Évolution par séance</h2><p>Charge = durée saisie par le staff × RPE ressenti par le joueur.</p></div><label class="secure-field workload-chart-filter">JOUEUR<select data-workload-chart-player ${activePlayers.length ? '' : 'disabled'}>${chartPlayerOptions}</select></label></div><div class="workload-chart-wrap">${chart}</div></section>`;
+    const chart = rankedPlayers.length
+      ? `<svg class="workload-chart" width="${rankingWidth}" height="${rankingHeight}" viewBox="0 0 ${rankingWidth} ${rankingHeight}" role="img" aria-label="Classement des charges d’entraînement des joueurs sur les 7 derniers jours"><title>Charge totale sur les 7 derniers jours, du plus élevé au plus faible</title>${rankingGrid}${rankingBars}</svg>`
+      : '<p class="workload-chart-empty">Aucun joueur actif dans l’effectif.</p>';
+    workloadChartSection = `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE D’ENTRAÎNEMENT · 7 JOURS</p><h2>Classement des joueurs</h2><p>Charge totale calculée sur les 7 derniers jours, de la plus élevée à la plus faible. Les joueurs sans charge calculable restent en bas du classement.</p></div></div><div class="workload-chart-wrap">${chart}</div></section>`;
     const active = admin.workloadQuestions.filter((question) => question.active);
     const archived = admin.workloadQuestions.filter((question) => !question.active);
     const questionRow = (question) => `<tr><td><strong>${html(question.prompt)}</strong><div class="secure-muted">${html(question.help_text)}</div></td><td>${question.metric_key === 'duration_minutes' ? 'Durée · charge' : question.metric_key === 'rpe' ? 'RPE · charge' : question.question_type === 'scale' ? `Échelle ${question.scale_min}–${question.scale_max}` : question.question_type === 'number' ? 'Nombre' : question.question_type === 'short_text' ? 'Texte court' : 'Choix unique'}</td><td><div class="secure-actions"><button class="btn button-secondary secure-small" data-action="edit-workload-question" data-id="${html(question.id)}">Modifier</button>${question.metric_key ? '<span class="secure-muted">Indispensable au calcul</span>' : `<button class="btn button-secondary secure-small" data-action="${question.active ? 'archive-workload-question' : 'restore-workload-question'}" data-id="${html(question.id)}">${question.active ? 'Retirer' : 'Restaurer'}</button>`}</div></td></tr>`;
