@@ -311,7 +311,14 @@
       });
       content.insertAdjacentHTML('afterbegin', workloadChartSection);
     }
-    else content.innerHTML = detailSessionId ? renderSessionDetail(detailSessionId) : renderSessions();
+    else {
+      content.innerHTML = detailSessionId ? renderSessionDetail(detailSessionId) : renderSessions();
+      if (detailSessionId) {
+        const session = admin.sessions.find((item) => item.id === detailSessionId);
+        const firstPanel = content.querySelector(':scope > .secure-panel');
+        if (session && firstPanel) firstPanel.insertAdjacentHTML('beforebegin', renderSessionLoadCharts(session));
+      }
+    }
   }
 
   const fr = (value, digits = 1) => Number(value).toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -470,6 +477,71 @@
     const average = scores.length ? `${fr(scores.reduce((sum, value) => sum + value, 0) / scores.length)} %` : '—';
     const link = session.shared_token ? `<button class="btn secure-small" data-action="show-link" data-id="${html(session.id)}">Lien joueurs</button>` : '';
     return `<div class="secure-title"><div><p class="eyebrow">${dateText(session.session_date)} · ${isMatch(session) ? 'MATCH' : 'ENTRAÎNEMENT'} · ${session.status === 'open' ? 'OUVERTE' : 'CLÔTURÉE'}</p><h1>${html(session.title)}</h1><p>${responses.length} réponse${responses.length === 1 ? '' : 's'} · ${summary}</p></div><div class="secure-actions">${link}<button class="btn button-secondary" data-action="back-sessions">Retour aux séances</button></div></div><div class="secure-stat-grid"><article class="secure-stat"><span>RÉPONSES</span><strong>${responses.length} / ${admin.players.filter((player) => player.active).length}</strong></article><article class="secure-stat"><span>WELLNESS MOYEN</span><strong>${average}</strong></article><article class="secure-stat"><span>${isMatch(session) ? 'CONVOQUÉS' : 'PRÉSENTS'}</span><strong>${counts.present || 0}</strong></article></div><section class="secure-panel">${renderResults(session)}</section>${wellnessLegend()}`;
+  }
+
+  function renderRankedSessionChart(title, subtitle, entries, unit, color, maximum, decimals) {
+    const measured = entries
+      .filter((entry) => Number.isFinite(entry.value))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'fr'));
+    const missing = entries
+      .filter((entry) => !Number.isFinite(entry.value))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const ranked = [...measured, ...missing];
+    const chartWidth = Math.max(640, ranked.length * 82 + 62);
+    const chartHeight = 260;
+    const chartLeft = 42;
+    const chartRight = 16;
+    const chartTop = 22;
+    const chartBottom = 190;
+    const chartMax = maximum ?? Math.max(100, Math.ceil(Math.max(0, ...measured.map((entry) => entry.value)) / 100) * 100);
+    const plotWidth = chartWidth - chartLeft - chartRight;
+    const plotHeight = chartBottom - chartTop;
+    const grid = [0, 0.5, 1].map((fraction) => {
+      const y = chartBottom - fraction * plotHeight;
+      return `<line x1="${chartLeft}" y1="${y}" x2="${chartWidth - chartRight}" y2="${y}" stroke="#e2e8e1"/><text x="${chartLeft - 7}" y="${y + 4}" text-anchor="end" fill="#7d8981" font-size="10">${fr(chartMax * fraction, 0)}</text>`;
+    }).join('');
+    const slot = plotWidth / Math.max(1, ranked.length);
+    const bars = ranked.map((entry, index) => {
+      const center = chartLeft + index * slot + slot / 2;
+      const measuredValue = Number.isFinite(entry.value);
+      const barHeight = measuredValue ? entry.value / chartMax * plotHeight : 0;
+      const y = chartBottom - barHeight;
+      const barWidth = Math.min(38, slot * 0.58);
+      const label = entry.name.length > 10 ? `${entry.name.slice(0, 9)}…` : entry.name;
+      const valueLabel = measuredValue ? `${fr(entry.value, decimals)} ${unit}` : '—';
+      return `<g><title>${html(entry.name)} · ${valueLabel}</title><rect x="${center - barWidth / 2}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="${measuredValue ? color : '#a7b0aa'}"/><text x="${center}" y="${Math.max(chartTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="9">${measuredValue ? fr(entry.value, decimals) : '—'}</text><text x="${center}" y="${chartBottom + 18}" text-anchor="middle" fill="#58665d" font-size="9">${html(label)}</text></g>`;
+    }).join('');
+    const chart = ranked.length
+      ? `<div class="workload-chart-wrap"><svg class="workload-chart" width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="${html(title)}"><title>${html(title)}</title>${grid}${bars}</svg></div>`
+      : '<p class="workload-chart-empty">Aucun joueur dans l’effectif.</p>';
+    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">${html(subtitle)}</p><h2>${html(title)}</h2><p>Du plus élevé à gauche au plus faible à droite. Les joueurs sans mesure sont affichés à la fin avec « — ».</p></div></div>${chart}</section>`;
+  }
+
+  function renderSessionLoadCharts(session) {
+    const wellnessByPlayer = new Map(admin.responses
+      .filter((response) => response.session_id === session.id)
+      .map((response) => [response.player_id, response]));
+    const workloadByPlayer = new Map(admin.workloadResponses
+      .filter((response) => response.session_id === session.id)
+      .map((response) => [response.player_id, response]));
+    const attendanceByPlayer = new Set(admin.attendance
+      .filter((record) => record.session_id === session.id)
+      .map((record) => record.player_id));
+    const players = admin.players.filter((player) => player.active
+      || wellnessByPlayer.has(player.id)
+      || workloadByPlayer.has(player.id)
+      || attendanceByPlayer.has(player.id));
+    const workloadEntries = players.map((player) => {
+      const rawLoad = workloadByPlayer.get(player.id)?.training_load;
+      const load = rawLoad == null ? null : Number(rawLoad);
+      return { name: player.display_name, value: Number.isFinite(load) ? load : null };
+    });
+    const wellnessEntries = players.map((player) => {
+      const response = wellnessByPlayer.get(player.id);
+      const score = response ? wellnessScore(session, response) : null;
+      return { name: player.display_name, value: Number.isFinite(score) ? score : null };
+    });
+    return `${renderRankedSessionChart('Charge par joueur', 'CHARGE DE LA SÉANCE', workloadEntries, 'UA', '#8e1b2c', null, 0)}${renderRankedSessionChart('Score wellness par joueur', 'WELLNESS DE LA SÉANCE', wellnessEntries, '%', '#4f8d5d', 100, 1)}`;
   }
 
   function renderAttendance() {
