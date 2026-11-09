@@ -3,7 +3,8 @@
   if (!runtime?.configured || !runtime.client) return;
 
   const client = runtime.client;
-  const token = runtime.token;
+  const sharedToken = typeof runtime.token === 'string' && runtime.token.startsWith('s-') ? runtime.token.slice(2) : null;
+  const token = sharedToken ? null : runtime.token;
   const html = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[character]);
@@ -12,7 +13,7 @@
   const dateText = (value) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
     .format(new Date(`${value}T12:00:00`));
 
-  if (token) {
+  if (token || sharedToken) {
     const form = one('#player-questionnaire');
     const message = one('#player-message');
     const submit = one('.player-submit');
@@ -21,7 +22,7 @@
     submit.disabled = true;
     message.textContent = 'Chargement du questionnaire…';
 
-    client.functions.invoke('get-questionnaire', { body: { token } }).then(({ data, error }) => {
+    client.functions.invoke('get-questionnaire', { body: sharedToken ? { sharedToken } : { token } }).then(({ data, error }) => {
       if (error || !Array.isArray(data?.questions) || !data.questions.length) {
         one('#player-questions').replaceChildren();
         message.textContent = 'Ce lien est invalide, expiré ou déjà utilisé. Préviens le staff.';
@@ -31,7 +32,13 @@
       const questions = data.questions;
       one('.player-card .eyebrow').textContent = `SÉANCE · ${dateText(data.sessionDate)}`;
       one('.player-card h1').textContent = data.title;
-      one('.player-card > p:not(.eyebrow)').textContent = 'Réponds selon ton ressenti. Tes réponses sont transmises au staff et ne sont pas visibles par les autres joueurs.';
+      one('.player-card > p:not(.eyebrow)').textContent = sharedToken
+        ? 'Choisis ton nom et saisis ton code personnel avant de répondre. Tes réponses ne sont pas visibles par les autres joueurs.'
+        : 'Réponds selon ton ressenti. Tes réponses sont transmises au staff et ne sont pas visibles par les autres joueurs.';
+      if (sharedToken) {
+        const playerOptions = data.players.map((player) => `<option value="${html(player.id)}">${html(player.display_name)}</option>`).join('');
+        one('.player-card > p:not(.eyebrow)').insertAdjacentHTML('afterend', `<label class="player-note" for="shared-player">Ton nom<select id="shared-player" required><option value="">Choisir ton nom</option>${playerOptions}</select></label><label class="player-note" for="shared-pin">Code personnel<input id="shared-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" pattern="[0-9]{8}" placeholder="8 chiffres" required></label>`);
+      }
       one('#player-questions').innerHTML = questions.map((question, index) => {
         const required = question.required ? ' · obligatoire' : ' · facultatif';
         let control = '';
@@ -70,12 +77,19 @@
           message.textContent = 'Réponds aux questions obligatoires avant l’envoi.';
           return;
         }
+        if (sharedToken && (!one('#shared-player').value || !/^\d{8}$/.test(one('#shared-pin').value))) {
+          message.textContent = 'Choisis ton nom et saisis ton code personnel à 8 chiffres.';
+          return;
+        }
         submit.disabled = true;
         message.textContent = 'Envoi en cours…';
-        const result = await client.functions.invoke('submit-wellness', { body: { token, answers } });
+        const body = sharedToken
+          ? { sharedToken, playerId: one('#shared-player').value, pin: one('#shared-pin').value, answers }
+          : { token, answers };
+        const result = await client.functions.invoke('submit-wellness', { body });
         if (result.error) {
           submit.disabled = false;
-          message.textContent = 'Envoi impossible. Vérifie ton lien ou préviens le staff.';
+          message.textContent = result.data?.error || 'Envoi impossible. Vérifie ton lien ou préviens le staff.';
           return;
         }
         one('.player-card').innerHTML = '<div class="player-thanks"><p class="eyebrow">RÉPONSE ENREGISTRÉE</p><h1>Merci, c’est envoyé.</h1><p>Tu peux fermer cette page.</p></div>';
@@ -87,7 +101,7 @@
 
   const login = one('#admin-login');
   if (!login) return;
-  let admin = { players: [], questions: [], sessions: [], responses: [] };
+  let admin = { players: [], questions: [], sessions: [], responses: [], attendance: [] };
   let activeTab = 'sessions';
   let selectedSessionId = '';
   let showArchivedPlayers = false;
@@ -102,6 +116,7 @@
     .secure-nav button{border:0;background:transparent;padding:13px 12px;color:#6d7971;font-size:12px;border-bottom:2px solid transparent}.secure-nav button.active{color:#8e1b2c;border-color:#8e1b2c;font-weight:600}
     .secure-content{max-width:1180px;margin:0 auto;padding:27px 24px 42px}.secure-title{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}.secure-title h1{font-size:28px;margin:0}.secure-title p{margin:6px 0 0;color:#7d8981;font-size:12px}
     .secure-panel{background:white;border:1px solid #e2e8e1;padding:18px;margin-bottom:14px}.secure-table{width:100%;border-collapse:collapse;text-align:left}.secure-table th{padding:10px 8px;border-bottom:1px solid #e2e8e1;color:#859087;font:9px 'Space Mono',monospace;text-transform:uppercase}.secure-table td{padding:11px 8px;border-bottom:1px solid #edf0ec;font-size:12px;vertical-align:middle}.secure-table tr:last-child td{border-bottom:0}.secure-actions{display:flex;gap:6px;flex-wrap:wrap}.secure-small{min-height:30px;padding:0 9px;font-size:10px}.secure-muted{color:#839087;font-size:11px}.secure-tag{display:inline-block;padding:4px 7px;background:#f5edcf;color:#756126;font-size:9px}.secure-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}.secure-stat{background:#fff;border:1px solid #e2e8e1;padding:14px}.secure-stat span{display:block;color:#839087;font:9px 'Space Mono',monospace}.secure-stat strong{display:block;margin-top:8px;font:22px 'Space Mono',monospace}
+    .secure-attendance{min-height:30px;border:1px solid #e2e8e1;background:#fff;padding:4px 7px;font-size:11px}
     .secure-dialog{width:min(560px,calc(100vw - 28px));max-height:88vh;overflow:auto;border:0;padding:0;box-shadow:0 20px 70px #102f2833}.secure-dialog::backdrop{background:#102f2877}.secure-dialog form,.secure-dialog-content{padding:22px}.secure-dialog h2{margin:0 0 6px;font-size:20px}.secure-dialog p{color:#748177;font-size:12px}.secure-field{display:grid;gap:6px;margin:12px 0;color:#58665d;font-size:11px}.secure-field input,.secure-field select,.secure-field textarea{width:100%;min-height:38px;border:1px solid #e2e8e1;background:#fff;padding:8px 10px}.secure-field textarea{resize:vertical}.secure-check{display:flex;align-items:center;gap:8px;margin:12px 0;color:#59665d;font-size:11px}.secure-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.secure-error{color:#a84433!important;min-height:16px}.secure-toast{position:fixed;right:20px;bottom:20px;padding:12px 16px;background:#281d20;color:white;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s}.secure-toast.show{opacity:1}.invite-row{display:grid;grid-template-columns:145px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #e2e8e1}.invite-row input{min-width:0;height:34px;border:1px solid #e2e8e1;padding:0 7px;font-size:10px}.invite-row button{height:34px;border:0;background:#8e1b2c;color:white;padding:0 10px;font-size:10px}
 +    @media(max-width:700px){.secure-header{padding:12px 14px}.secure-nav{padding:0 10px;overflow:auto}.secure-nav button{white-space:nowrap;padding:12px 9px}.secure-content{padding:20px 12px}.secure-title{align-items:flex-start;flex-direction:column}.secure-title h1{font-size:24px}.secure-stat-grid{gap:6px}.secure-stat{padding:10px}.secure-stat span{font-size:7px}.secure-stat strong{font-size:17px}.secure-panel{padding:12px 9px}.invite-row{grid-template-columns:1fr auto}.invite-row input{grid-column:1/-1;grid-row:2}}
 +  `;
@@ -120,15 +135,16 @@
   }
 
   async function loadAdmin() {
-    const [players, questions, sessions, responses] = await Promise.all([
+    const [players, questions, sessions, responses, attendance] = await Promise.all([
       client.from('players').select('id,display_name,position,shirt_number,active,created_at').order('display_name'),
       client.from('questionnaire_questions').select('id,prompt,help_text,question_type,required,scale_min,scale_max,min_label,max_label,options,sort_order,active').order('sort_order'),
-      client.from('sessions').select('id,title,session_date,status,form_snapshot,created_at').order('created_at', { ascending: false }),
+      client.from('sessions').select('id,title,session_date,session_type,status,form_snapshot,created_at').order('created_at', { ascending: false }),
       client.from('wellness_responses').select('id,session_id,player_id,answers,note,submitted_at').order('submitted_at', { ascending: false }),
+      client.from('session_attendance').select('session_id,player_id,status,source,updated_at'),
     ]);
-    const error = players.error || questions.error || sessions.error || responses.error;
+    const error = players.error || questions.error || sessions.error || responses.error || attendance.error;
     if (error) throw error;
-    admin = { players: players.data || [], questions: questions.data || [], sessions: sessions.data || [], responses: responses.data || [] };
+    admin = { players: players.data || [], questions: questions.data || [], sessions: sessions.data || [], responses: responses.data || [], attendance: attendance.data || [] };
     if (!selectedSessionId || !admin.sessions.some((session) => session.id === selectedSessionId)) {
       selectedSessionId = admin.sessions[0]?.id || '';
     }
@@ -142,6 +158,7 @@
       document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="questions">Questionnaire</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
       root = one('#secure-admin');
       root.addEventListener('click', handleAction);
+      root.addEventListener('change', handleAttendanceChange);
       many('.secure-nav button', root).forEach((button) => button.addEventListener('click', () => {
         activeTab = button.dataset.tab;
         renderAdmin();
@@ -167,17 +184,35 @@
     const responseCount = selected ? admin.responses.filter((response) => response.session_id === selected.id).length : 0;
     const playersActive = admin.players.filter((player) => player.active).length;
     const scaleQuestions = selected?.form_snapshot?.filter((question) => question.type === 'scale') || [];
+    const questions = selected?.form_snapshot || [];
+    const responsesByPlayer = new Map(admin.responses
+      .filter((response) => response.session_id === selected?.id)
+      .map((response) => [response.player_id, response]));
+    const attendanceByPlayer = new Map(admin.attendance
+      .filter((record) => record.session_id === selected?.id)
+      .map((record) => [record.player_id, record]));
     const averages = scaleQuestions.map((question) => {
       const values = admin.responses.filter((response) => response.session_id === selected.id)
         .map((response) => Number(response.answers?.[question.id])).filter(Number.isFinite);
       const average = values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1) : '—';
       return `<span>${html(question.prompt)} · ${average}</span>`;
     }).join('');
+    const resultHeaders = questions.map((question) => `<th>${html(question.prompt)}</th>`).join('');
+    const resultRows = selected ? admin.players.filter((player) => player.active).map((player) => {
+      const response = responsesByPlayer.get(player.id);
+      const attendance = attendanceByPlayer.get(player.id);
+      const attendanceValue = attendance?.status || (response ? 'present' : '');
+      const answers = questions.map((question) => `<td>${html(response?.answers?.[question.id] ?? '—')}</td>`).join('');
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><span class="secure-tag">${response ? 'Répondu' : 'En attente'}</span></td><td><select class="secure-attendance" data-attendance="true" data-session-id="${html(selected.id)}" data-player-id="${html(player.id)}" aria-label="Présence de ${html(player.display_name)}"><option value="" ${!attendanceValue ? 'selected' : ''}>À confirmer</option><option value="present" ${attendanceValue === 'present' ? 'selected' : ''}>Présent</option><option value="absent" ${attendanceValue === 'absent' ? 'selected' : ''}>Absent</option></select></td>${answers}<td>${response?.note ? html(response.note) : '—'}</td></tr>`;
+    }).join('') : '';
     const rows = admin.sessions.map((session) => {
       const count = admin.responses.filter((response) => response.session_id === session.id).length;
-      return `<tr><td><strong>${html(session.title)}</strong></td><td>${dateText(session.session_date)}</td><td>${count} / ${playersActive}</td><td><span class="secure-tag">${session.status === 'open' ? 'Ouverte' : 'Clôturée'}</span></td><td><div class="secure-actions"><button class="btn secure-small" data-action="view-session" data-id="${html(session.id)}">Réponses</button>${session.status === 'open' ? `<button class="btn button-secondary secure-small" data-action="close-session" data-id="${html(session.id)}">Clôturer</button>` : ''}</div></td></tr>`;
+      return `<tr><td><strong>${html(session.title)}</strong></td><td>${dateText(session.session_date)}</td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${count} / ${playersActive}</td><td><span class="secure-tag">${session.status === 'open' ? 'Ouverte' : 'Clôturée'}</span></td><td><div class="secure-actions"><button class="btn secure-small" data-action="view-session" data-id="${html(session.id)}">Réponses</button><button class="btn button-secondary secure-small" data-action="edit-session" data-id="${html(session.id)}">Modifier</button>${session.status === 'open' ? `<button class="btn button-secondary secure-small" data-action="close-session" data-id="${html(session.id)}">Clôturer</button>` : ''}<button class="btn button-secondary secure-small" data-action="delete-session" data-id="${html(session.id)}">Supprimer</button></div></td></tr>`;
     }).join('');
-    return `<div class="secure-title"><div><p class="eyebrow">SUIVI U14 · LYON - LA DUCHÈRE</p><h1>Séances & réponses</h1><p>Les réponses et synthèses ne sont visibles que par ton compte admin.</p></div><button class="btn" data-action="new-session">+ Nouvelle séance</button></div><div class="secure-stat-grid"><article class="secure-stat"><span>SÉANCES CONSERVÉES</span><strong>${admin.sessions.length}</strong></article><article class="secure-stat"><span>RÉPONSES · SÉANCE SÉLECTIONNÉE</span><strong>${responseCount} / ${playersActive}</strong></article><article class="secure-stat"><span>MOYENNES PAR ÉCHELLE</span><strong>${scaleQuestions.length || '—'}</strong></article></div>${selected ? `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SYNTHÈSE · ${dateText(selected.session_date)}</p><h2>${html(selected.title)}</h2></div><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(selected.id)}">Voir le détail</button></div><div class="secure-muted">${averages || 'Aucune question à échelle dans cette séance.'}</div></section>` : '<section class="secure-panel secure-muted">Aucune séance. Crée une séance pour envoyer le questionnaire à l’effectif.</section>'}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">HISTORIQUE</p><h2>Séances précédentes</h2></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>DATE</th><th>RÉPONSES</th><th>ÉTAT</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="secure-muted">Aucune séance enregistrée.</td></tr>'}</tbody></table></div></section>`;
+    const results = selected
+      ? `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">RÉSULTATS · ${dateText(selected.session_date)}</p><h2>${html(selected.title)} · ${responseCount} / ${playersActive} réponses</h2><p>Les joueurs en attente sont affichés même sans réponse.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>QUESTIONNAIRE</th><th>PRÉSENCE</th>${resultHeaders}<th>NOTE AU STAFF</th></tr></thead><tbody>${resultRows || '<tr><td colspan="4" class="secure-muted">Aucun joueur actif dans l’effectif.</td></tr>'}</tbody></table></div></section>`
+      : '<section class="secure-panel secure-muted">Crée une séance pour afficher les résultats du questionnaire.</section>';
+    return `<div class="secure-title"><div><p class="eyebrow">SUIVI U14 · LYON - LA DUCHÈRE</p><h1>Séances & réponses</h1><p>Les réponses et synthèses ne sont visibles que par ton compte admin.</p></div><button class="btn" data-action="new-session">+ Nouvelle séance</button></div><div class="secure-stat-grid"><article class="secure-stat"><span>SÉANCES CONSERVÉES</span><strong>${admin.sessions.length}</strong></article><article class="secure-stat"><span>RÉPONSES · SÉANCE SÉLECTIONNÉE</span><strong>${responseCount} / ${playersActive}</strong></article><article class="secure-stat"><span>MOYENNES PAR ÉCHELLE</span><strong>${scaleQuestions.length || '—'}</strong></article></div>${selected ? `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SYNTHÈSE · ${dateText(selected.session_date)}</p><h2>${html(selected.title)}</h2></div></div><div class="secure-muted">${averages || 'Aucune question à échelle dans cette séance.'}</div></section>` : ''}${results}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">HISTORIQUE</p><h2>Séances précédentes</h2></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>DATE</th><th>TYPE</th><th>RÉPONSES</th><th>ÉTAT</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucune séance enregistrée.</td></tr>'}</tbody></table></div></section>`;
   }
 
   function renderQuestions() {
@@ -222,13 +257,51 @@
     return dialog;
   }
 
-  function openSessionDialog() {
-    const dialog = openDialog(`<form id="create-session-form"><h2>Nouvelle séance U14</h2><p>Un lien de réponse individuel sera créé pour chaque joueur actif.</p><label class="secure-field">Nom de la séance<input name="title" required maxlength="80" placeholder="Ex. Entraînement collectif"></label><label class="secure-field">Date<input name="session_date" type="date" required value="${new Date().toLocaleDateString('sv-SE')}"></label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Créer et préparer les liens</button></div></form>`);
-    one('#create-session-form', dialog).onsubmit = async (event) => {
+  async function handleAttendanceChange(event) {
+    const select = event.target.closest('select[data-attendance]');
+    if (!select) return;
+    const query = client.from('session_attendance');
+    const result = select.value
+      ? await query.upsert({
+        session_id: select.dataset.sessionId,
+        player_id: select.dataset.playerId,
+        status: select.value,
+        source: 'admin',
+        updated_at: new Date().toISOString(),
+      })
+      : await query.delete().eq('session_id', select.dataset.sessionId).eq('player_id', select.dataset.playerId);
+    if (result.error) {
+      toast('Impossible de modifier cette présence.');
+      return;
+    }
+    await loadAdmin();
+    renderAdmin();
+    toast('Présence mise à jour.');
+  }
+
+  function openSessionDialog(session) {
+    const editing = !!session;
+    const dialog = openDialog(`<form id="session-form"><h2>${editing ? 'Modifier la séance' : 'Nouvelle séance U14'}</h2><label class="secure-field">Nom de la séance<input name="title" required maxlength="80" value="${html(session?.title || '')}" placeholder="Ex. Entraînement collectif"></label><label class="secure-field">Date<input name="session_date" type="date" required value="${html(session?.session_date || new Date().toLocaleDateString('sv-SE'))}"></label><label class="secure-field">Type<select name="session_type"><option value="training" ${session?.session_type !== 'match' ? 'selected' : ''}>Entraînement</option><option value="match" ${session?.session_type === 'match' ? 'selected' : ''}>Match</option></select></label><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">${editing ? 'Enregistrer' : 'Créer et préparer les liens'}</button></div></form>`);
+    one('#session-form', dialog).onsubmit = async (event) => {
       event.preventDefault();
       const formData = new FormData(event.currentTarget);
-      const { data, error } = await client.functions.invoke('create-session-links', { body: { title: formData.get('title'), sessionDate: formData.get('session_date') } });
-      if (error || !data?.links) {
+      if (editing) {
+        const { error } = await client.from('sessions').update({
+          title: String(formData.get('title')).trim(),
+          session_date: formData.get('session_date'),
+          session_type: formData.get('session_type'),
+        }).eq('id', session.id);
+        if (error) {
+          one('#dialog-error', dialog).textContent = 'Impossible de modifier la séance.';
+          return;
+        }
+        dialog.close();
+        await loadAdmin();
+        renderAdmin();
+        return;
+      }
+      const { data, error } = await client.functions.invoke('create-session-links', { body: { title: formData.get('title'), sessionDate: formData.get('session_date'), sessionType: formData.get('session_type') } });
+      if (error || !data?.sharedUrl || !Array.isArray(data?.codes)) {
         one('#dialog-error', dialog).textContent = data?.error || 'Impossible de créer la séance. Vérifie les joueurs et les questions.';
         return;
       }
@@ -236,30 +309,52 @@
       await loadAdmin();
       activeTab = 'sessions';
       renderAdmin();
-      openInviteDialog(data.links, data.session.title);
+      openInviteDialog(data.sharedUrl, data.codes, data.session.title);
     };
   }
 
-  function openInviteDialog(links, title) {
-    const dialog = openDialog(`<div class="secure-dialog-content"><h2>${html(title)} · liens joueurs</h2><p>Chaque lien est personnel, à usage unique et ne donne aucun accès aux réponses.</p><div id="secure-invites"></div><div class="secure-dialog-actions"><button class="btn" type="button" data-action="close-dialog">Terminé</button></div></div>`);
+  function openDeleteSessionDialog(session) {
+    const dialog = openDialog(`<form id="delete-session-form"><h2>Supprimer cette séance ?</h2><p>« ${html(session.title)} » et toutes les réponses associées seront supprimées définitivement.</p><p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Supprimer la séance</button></div></form>`);
+    one('#delete-session-form', dialog).onsubmit = async (event) => {
+      event.preventDefault();
+      const { error } = await client.from('sessions').delete().eq('id', session.id);
+      if (error) {
+        one('#dialog-error', dialog).textContent = 'Impossible de supprimer la séance.';
+        return;
+      }
+      dialog.close();
+      selectedSessionId = '';
+      await loadAdmin();
+      renderAdmin();
+    };
+  }
+
+  function openInviteDialog(sharedUrl, codes, title) {
+    const dialog = openDialog(`<div class="secure-dialog-content"><h2>${html(title)} · lien joueurs</h2><p>Envoie ce lien à tout le groupe. Chaque joueur doit utiliser son code personnel.</p><div class="invite-row"><strong>Lien commun</strong><input id="shared-invite-url" readonly aria-label="Lien commun du questionnaire"><button id="copy-shared-link" type="button">Copier</button></div><p class="secure-muted">Codes personnels · à transmettre individuellement</p><div id="secure-invites"></div><div class="secure-dialog-actions"><button class="btn" type="button" data-action="close-dialog">Terminé</button></div></div>`);
+    const linkInput = one('#shared-invite-url', dialog);
+    linkInput.value = sharedUrl;
+    one('#copy-shared-link', dialog).onclick = async () => {
+      await navigator.clipboard.writeText(sharedUrl);
+      one('#copy-shared-link', dialog).textContent = 'Copié';
+    };
     const list = one('#secure-invites', dialog);
-    links.forEach((invite) => {
+    codes.forEach((invite) => {
       const row = document.createElement('div');
       row.className = 'invite-row';
       const name = document.createElement('strong');
       name.textContent = invite.playerName;
-      const link = document.createElement('input');
-      link.readOnly = true;
-      link.value = invite.url;
-      link.setAttribute('aria-label', `Lien questionnaire ${invite.playerName}`);
+      const code = document.createElement('input');
+      code.readOnly = true;
+      code.value = invite.code;
+      code.setAttribute('aria-label', `Code personnel ${invite.playerName}`);
       const copy = document.createElement('button');
       copy.type = 'button';
-      copy.textContent = 'Copier';
+      copy.textContent = 'Copier le code';
       copy.onclick = async () => {
-        await navigator.clipboard.writeText(invite.url);
+        await navigator.clipboard.writeText(invite.code);
         copy.textContent = 'Copié';
       };
-      row.append(name, link, copy);
+      row.append(name, code, copy);
       list.append(row);
     });
   }
@@ -340,6 +435,8 @@
     const action = button.dataset.action;
     const id = button.dataset.id;
     if (action === 'new-session') openSessionDialog();
+    else if (action === 'edit-session') openSessionDialog(admin.sessions.find((item) => item.id === id));
+    else if (action === 'delete-session') openDeleteSessionDialog(admin.sessions.find((item) => item.id === id));
     else if (action === 'new-question') openQuestionDialog();
     else if (action === 'edit-question') openQuestionDialog(admin.questions.find((item) => item.id === id));
     else if (action === 'new-player') openPlayerDialog();
