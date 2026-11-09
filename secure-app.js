@@ -117,11 +117,9 @@
     '00000000-0000-4000-8000-0000000000a6': 14,
   };
   const MIN_BASELINE = 5;
-  // Seuils absolus (en %) utilisés tant que le joueur a moins de MIN_BASELINE séances de référence.
-  const ABSOLUTE_LIMITS = { good: 70, medium: 55 };
   const WELLNESS_STATES = {
     green: { label: 'En forme', zone: 'Optimal', css: 'wb-green', action: 'Maintenir ou pousser : appliquer la séance prévue, intensité légèrement augmentable si l’athlète se sent excellent.' },
-    orange: { label: 'Forme moyenne', zone: 'Baisse modérée', css: 'wb-orange', action: 'Réguler : garder le cœur de la séance, réduire le volume (1 à 2 séries) ou allonger les récupérations.' },
+    orange: { label: 'Forme en baisse', zone: 'Baisse modérée', css: 'wb-orange', action: 'Réguler : garder le cœur de la séance, réduire le volume (1 à 2 séries) ou allonger les récupérations.' },
     red: { label: 'Pas en forme', zone: 'Chute critique', css: 'wb-red', action: 'Alléger drastiquement ou modifier : récupération active (mobilité, cardio zone 2 très léger) ou repos complet.' },
   };
 
@@ -134,26 +132,14 @@
     .secure-nav button{border:0;background:transparent;padding:13px 12px;color:#6d7971;font-size:12px;border-bottom:2px solid transparent}.secure-nav button.active{color:#8e1b2c;border-color:#8e1b2c;font-weight:600}
     .secure-content{max-width:1180px;margin:0 auto;padding:27px 24px 42px}.secure-title{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}.secure-title h1{font-size:28px;margin:0}.secure-title p{margin:6px 0 0;color:#7d8981;font-size:12px}
     .secure-panel{background:white;border:1px solid #e2e8e1;padding:18px;margin-bottom:14px}.secure-table{width:100%;border-collapse:collapse;text-align:left}.secure-table th{padding:10px 8px;border-bottom:1px solid #e2e8e1;color:#859087;font:9px 'Space Mono',monospace;text-transform:uppercase}.secure-table td{padding:11px 8px;border-bottom:1px solid #edf0ec;font-size:12px;vertical-align:middle}.secure-table tr:last-child td{border-bottom:0}.secure-actions{display:flex;gap:6px;flex-wrap:wrap}.secure-small{min-height:30px;padding:0 9px;font-size:10px}.secure-muted{color:#839087;font-size:11px}.secure-tag{display:inline-block;padding:4px 7px;background:#f5edcf;color:#756126;font-size:9px}.secure-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}.secure-stat{background:#fff;border:1px solid #e2e8e1;padding:14px}.secure-stat span{display:block;color:#839087;font:9px 'Space Mono',monospace}.secure-stat strong{display:block;margin-top:8px;font:22px 'Space Mono',monospace}
+    .secure-content{max-width:1380px}.tablewrap{overflow:auto;border:1px solid #edf0ec}.secure-table{min-width:760px}.secure-table th{position:sticky;top:0;background:#f7f8f4;z-index:1;line-height:1.4}.secure-table td{line-height:1.45}.secure-results-table{min-width:1180px}.secure-table tbody tr:nth-child(even){background:#fbfcf9}
     .secure-attendance{min-height:30px;border:1px solid #e2e8e1;background:#fff;padding:4px 7px;font-size:11px}
     .secure-row-click{cursor:pointer}.secure-row-click:hover{background:#faf6ea}
-    .wb{display:inline-block;padding:4px 8px;font-size:10px;font-weight:600;white-space:nowrap}.wb-green{background:#e6f0e5;color:#3f7d4e}.wb-orange{background:#fff1b8;color:#7a5800}.wb-red{background:#f9eae5;color:#a84433}.wb-pending{background:#edf0ed;color:#74817a}
+    .wb{display:inline-block;padding:4px 8px;font-size:10px;font-weight:600;white-space:nowrap}.wb-green{background:#e6f0e5;color:#3f7d4e}.wb-orange{background:#fdf0d5;color:#a86400}.wb-red{background:#f9eae5;color:#a84433}.wb-pending{background:#edf0ed;color:#74817a}
+    .wb-score{font:600 12px 'Space Mono',monospace;padding:6px 9px}.wellness-alert{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;margin-bottom:14px;background:#fff0ec;border:1px solid #e4a397;border-left:4px solid #bf3d32;color:#702c27}.wellness-alert strong{display:block;margin-bottom:3px}.wellness-alert p{margin:0;color:#7e403a;font-size:12px}.wellness-alert .secure-small{margin-left:auto;flex:none}
     .wellness-legend{display:grid;gap:8px;margin-top:6px}.wellness-legend div{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:start;font-size:11px;color:#58665d}
-    .secure-panel{padding:20px 22px}.secure-panel-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:16px}.secure-panel-head h2{margin:0;font-size:17px}.secure-panel-head p{margin:5px 0 0;color:#7d8981;font-size:12px}.secure-averages span+span:before{content:' · '}
-    .secure-stat-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.secure-stat{border-top:3px solid #e2e8e1;padding:16px 18px}.secure-stat.is-red{border-top-color:#c4412e;background:#fdf4f1}.secure-stat.is-red strong{color:#a02f1f}
-    .secure-grid th,.secure-grid td{text-align:center;white-space:nowrap}.secure-grid th{background:#f7f8f4;padding:11px 10px;white-space:normal;line-height:1.35;vertical-align:bottom}.secure-grid td{padding:12px 10px}
-    .secure-grid th:first-child,.secure-grid td:first-child{text-align:left;position:sticky;left:0;z-index:1;min-width:160px;background:#fff;box-shadow:1px 0 0 #edf0ec}.secure-grid th:first-child{background:#f7f8f4}
-    .secure-grid tbody tr:hover td{background:#fbfbf7}.secure-grid tbody tr.row-red td{background:#fdf2ee}
-    .secure-grid .cell-note{text-align:left;white-space:normal;min-width:180px;max-width:280px;color:#58665d}.secure-grid td.cell-text{text-align:left;white-space:normal;min-width:140px;max-width:240px}.secure-grid th{min-width:84px}.secure-grid tfoot td{border-top:2px solid #e2e8e1;border-bottom:0;background:#f7f8f4;font-weight:700}.secure-grid tfoot td:first-child{background:#f7f8f4}.secure-grid .secure-actions{justify-content:flex-end;flex-wrap:nowrap}
-    .wscore{display:inline-block;min-width:70px;padding:5px 10px;font:700 12px 'Space Mono',monospace;text-align:center;border-radius:3px}.wscore.wb-green{background:#d9eedc;color:#256b37}.wscore.wb-orange{background:#fff1b8;color:#7a5800}.wscore.wb-red{background:#f6d0c6;color:#a02f1f}
-    .wlabel{display:block;margin-top:5px;font-size:10px;line-height:1.4;color:#74817a}.wlabel b{color:#3b4a41}
-    .wellness-details{padding:0}.wellness-details summary{cursor:pointer;padding:14px 22px;font-size:12px;font-weight:600;color:#58665d}.wellness-details>div{padding:0 22px 18px}
-    .secure-alert-wrap{max-width:1180px;margin:18px auto 0;padding:0 24px}.secure-alert-wrap:empty{display:none}
-    .alert-red{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:#fdf0ec;border:1px solid #ebbcae;border-left:5px solid #c4412e;padding:14px 18px;color:#7c2a1d}
-    .alert-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#c4412e;color:#fff;font-weight:700;flex:0 0 auto}.alert-red strong{font-size:14px}.alert-meta{margin-top:3px;font-size:12px;color:#8d5648}
-    .alert-players{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 260px}.alert-chip{background:#fff;border:1px solid #ebbcae;padding:5px 10px;font-size:12px;font-weight:600;color:#a02f1f}
-    @media(max-width:700px){.secure-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.secure-alert-wrap{padding:0 12px}.secure-grid th:first-child,.secure-grid td:first-child{min-width:120px}.secure-panel-head{flex-direction:column;align-items:flex-start}}
     .secure-dialog{width:min(560px,calc(100vw - 28px));max-height:88vh;overflow:auto;border:0;padding:0;box-shadow:0 20px 70px #102f2833}.secure-dialog::backdrop{background:#102f2877}.secure-dialog form,.secure-dialog-content{padding:22px}.secure-dialog h2{margin:0 0 6px;font-size:20px}.secure-dialog p{color:#748177;font-size:12px}.secure-field{display:grid;gap:6px;margin:12px 0;color:#58665d;font-size:11px}.secure-field input,.secure-field select,.secure-field textarea{width:100%;min-height:38px;border:1px solid #e2e8e1;background:#fff;padding:8px 10px}.secure-field textarea{resize:vertical}.secure-check{display:flex;align-items:center;gap:8px;margin:12px 0;color:#59665d;font-size:11px}.secure-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.secure-error{color:#a84433!important;min-height:16px}.secure-toast{position:fixed;right:20px;bottom:20px;padding:12px 16px;background:#281d20;color:white;font-size:12px;opacity:0;pointer-events:none;transition:opacity .2s}.secure-toast.show{opacity:1}.invite-row{display:grid;grid-template-columns:145px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #e2e8e1}.invite-row input{min-width:0;height:34px;border:1px solid #e2e8e1;padding:0 7px;font-size:10px}.invite-row button{height:34px;border:0;background:#8e1b2c;color:white;padding:0 10px;font-size:10px}
-    @media(max-width:700px){.secure-header{padding:12px 14px}.secure-nav{padding:0 10px;overflow:auto}.secure-nav button{white-space:nowrap;padding:12px 9px}.secure-content{padding:20px 12px}.secure-title{align-items:flex-start;flex-direction:column}.secure-title h1{font-size:24px}.secure-stat-grid{gap:6px}.secure-stat{padding:10px}.secure-stat span{font-size:7px}.secure-stat strong{font-size:17px}.secure-panel{padding:12px 9px}.invite-row{grid-template-columns:1fr auto}.invite-row input{grid-column:1/-1;grid-row:2}.wellness-legend div{grid-template-columns:1fr}}
+    @media(max-width:700px){.secure-header{padding:12px 14px}.secure-nav{padding:0 10px;overflow:auto}.secure-nav button{white-space:nowrap;padding:12px 9px}.secure-content{padding:20px 12px}.secure-title{align-items:flex-start;flex-direction:column}.secure-title h1{font-size:24px}.secure-stat-grid{gap:6px}.secure-stat{padding:10px}.secure-stat span{font-size:7px}.secure-stat strong{font-size:17px}.secure-panel{padding:12px 9px}.invite-row{grid-template-columns:1fr auto}.invite-row input{grid-column:1/-1;grid-row:2}.wellness-legend div{grid-template-columns:1fr}.wellness-alert{flex-wrap:wrap}.wellness-alert .secure-small{margin-left:0}}
   `;
   document.head.append(css);
 
@@ -190,7 +176,7 @@
     one('.shell').hidden = true;
     let root = one('#secure-admin');
     if (!root) {
-      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="questions">Questionnaire</button><button data-tab="players">Effectif</button></nav><div class="secure-alert-wrap" id="secure-alert"></div><main class="secure-content" id="secure-content"></main></div>`);
+      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="questions">Questionnaire</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
       root = one('#secure-admin');
       root.addEventListener('click', handleAction);
       root.addEventListener('change', handleAttendanceChange);
@@ -210,7 +196,6 @@
   function renderAdmin() {
     many('.secure-nav button').forEach((button) => button.classList.toggle('active', button.dataset.tab === activeTab));
     const content = one('#secure-content');
-    one('#secure-alert').innerHTML = renderAlert();
     if (activeTab === 'questions') content.innerHTML = renderQuestions();
     else if (activeTab === 'players') content.innerHTML = renderPlayers();
     else if (activeTab === 'attendance') content.innerHTML = renderAttendance();
@@ -258,10 +243,7 @@
       .map(({ item, other }) => wellnessScore(other, item))
       .filter((value) => value !== null)
       .slice(-30);
-    if (history.length < MIN_BASELINE) {
-      const state = score >= ABSOLUTE_LIMITS.good ? 'green' : score >= ABSOLUTE_LIMITS.medium ? 'orange' : 'red';
-      return { score, state, provisional: true, count: history.length };
-    }
+    if (history.length < MIN_BASELINE) return { score, state: 'pending', count: history.length };
     const mean = history.reduce((sum, value) => sum + value, 0) / history.length;
     const deviation = Math.sqrt(history.reduce((sum, value) => sum + (value - mean) ** 2, 0) / history.length);
     const z = (score - mean) / Math.max(deviation, 3);
@@ -270,43 +252,29 @@
 
   function wellnessCells(info) {
     if (info.score === null) return '<td class="secure-muted">—</td><td class="secure-muted">—</td>';
+    if (info.state === 'pending') {
+      return `<td><span class="wb wb-score wb-pending">${fr(info.score)} %</span></td><td><span class="wb wb-pending" title="Référence personnelle après ${MIN_BASELINE} séances">Référence ${info.count}/${MIN_BASELINE}</span></td>`;
+    }
     const state = WELLNESS_STATES[info.state];
-    const detail = info.provisional
-      ? `<span class="wlabel">référence provisoire (${info.count}/${MIN_BASELINE})</span>`
-      : `<span class="wlabel">habituel <b>${fr(info.mean)} %</b></span>`;
-    return `<td><span class="wscore ${state.css}">${fr(info.score)} %</span></td><td><span class="wb ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${state.label}</span>${detail}</td>`;
-  }
-
-  function sessionWellness(session) {
-    const rows = admin.responses.filter((item) => item.session_id === session.id)
-      .map((response) => ({ response, info: wellnessFor(session, response) }))
-      .filter(({ info }) => info.score !== null);
-    const average = rows.length ? rows.reduce((sum, { info }) => sum + info.score, 0) / rows.length : null;
-    const red = rows.filter(({ info }) => info.state === 'red').map(({ response, info }) => ({
-      player: admin.players.find((player) => player.id === response.player_id),
-      score: info.score,
-    }));
-    return { average, red };
-  }
-
-  function renderAlert() {
-    const order = (item) => `${item.session_date}|${item.created_at}`;
-    const latest = admin.sessions.filter((session) => admin.responses.some((item) => item.session_id === session.id))
-      .sort((a, b) => order(b).localeCompare(order(a)))[0];
-    if (!latest) return '';
-    const { red } = sessionWellness(latest);
-    if (!red.length) return '';
-    const chips = red.map(({ player, score }) => `<span class="alert-chip">${html(player?.display_name || 'Joueur retiré')} · ${fr(score)} %</span>`).join('');
-    return `<div class="alert-red" role="alert"><span class="alert-icon">!</span><div><strong>${red.length} joueur${red.length > 1 ? 's' : ''} dans le rouge</strong><div class="alert-meta">${html(latest.title)} · ${dateText(latest.session_date)}</div></div><div class="alert-players">${chips}</div><button class="btn secure-small" data-action="view-session" data-id="${html(latest.id)}">Voir la séance</button></div>`;
-  }
-
-  function statCard(label, value, extra = '') {
-    return `<article class="secure-stat ${extra}"><span>${label}</span><strong>${value}</strong></article>`;
+    return `<td><span class="wb wb-score ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${fr(info.score)} %</span><div class="secure-muted">habituel ${fr(info.mean)} %</div></td><td><span class="wb ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${state.label}</span></td>`;
   }
 
   function wellnessLegend() {
     const rows = Object.values(WELLNESS_STATES).map((state) => `<div><span class="wb ${state.css}">${state.label} · ${state.zone}</span><span>${html(state.action)}</span></div>`).join('');
-    return `<details class="secure-panel wellness-details"><summary>Comment lire le score wellness</summary><div><p class="secure-muted">Score pondéré sur 100 % (humeur, sommeil, énergie, douleurs, alimentation, stress). L’état compare le score du jour à la moyenne habituelle du joueur (à partir de ${MIN_BASELINE} séances) : jaune sous -0,5 écart-type, rouge sous -1. Avant cela, seuils provisoires : vert ≥ ${ABSOLUTE_LIMITS.good} %, jaune ≥ ${ABSOLUTE_LIMITS.medium} %, rouge en dessous.</p><div class="wellness-legend">${rows}</div></div></details>`;
+    return `<section class="secure-panel"><p class="eyebrow">SCORE WELLNESS</p><p class="secure-muted">Score pondéré sur 100 % (humeur, sommeil, énergie, douleurs, alimentation, stress). L’état compare le score du jour à la moyenne habituelle du joueur (au moins ${MIN_BASELINE} séances) : orange sous -0,5 écart-type, rouge sous -1.</p><div class="wellness-legend">${rows}</div></section>`;
+  }
+
+  function renderWellnessAlert(session) {
+    const playerById = new Map(admin.players.map((player) => [player.id, player]));
+    const redPlayers = admin.responses
+      .filter((response) => response.session_id === session.id && wellnessFor(session, response).state === 'red')
+      .map((response) => ({
+        name: playerById.get(response.player_id)?.display_name || 'Joueur',
+        score: wellnessScore(session, response),
+      }));
+    if (!redPlayers.length) return '';
+    const list = redPlayers.map((player) => `${html(player.name)} (${fr(player.score)} %)`).join(' · ');
+    return `<div class="wellness-alert" role="alert" aria-live="polite"><div><strong>Alerte wellness · ${redPlayers.length} joueur${redPlayers.length === 1 ? '' : 's'} en rouge</strong><p>${list}. Alléger ou remplacer la séance par de la récupération.</p></div></div>`;
   }
 
   function renderResults(session) {
@@ -319,19 +287,11 @@
       const response = responsesByPlayer.get(player.id);
       const value = attendanceByPlayer.get(player.id)?.status || (response ? 'present' : '');
       const options = `<option value="" ${!value ? 'selected' : ''}>À confirmer</option>${attendanceChoices(session).map(([status, label]) => `<option value="${status}" ${value === status ? 'selected' : ''}>${label}</option>`).join('')}`;
-      const answers = questions.map((question) => `<td class="${question.type === 'scale' ? '' : 'cell-text'}">${html(response?.answers?.[question.id] ?? '—')}</td>`).join('');
-      const info = response ? wellnessFor(session, response) : { score: null };
-      const wellness = wellnessCells(info);
-      return `<tr class="${info.state === 'red' ? 'row-red' : ''}"><td><strong>${html(player.display_name)}</strong>${player.active ? '' : ' <span class="secure-muted">(retiré)</span>'}</td><td><select class="secure-attendance" data-attendance="true" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" aria-label="Présence de ${html(player.display_name)}">${options}</select></td><td><span class="secure-tag">${response ? 'Répondu' : 'En attente'}</span></td>${wellness}${answers}<td class="cell-note">${response?.note ? html(response.note) : '—'}</td></tr>`;
+      const answers = questions.map((question) => `<td>${html(response?.answers?.[question.id] ?? '—')}</td>`).join('');
+      const wellness = response ? wellnessCells(wellnessFor(session, response)) : '<td class="secure-muted">—</td><td class="secure-muted">—</td>';
+      return `<tr><td><strong>${html(player.display_name)}</strong>${player.active ? '' : ' <span class="secure-muted">(retiré)</span>'}</td><td><select class="secure-attendance" data-attendance="true" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" aria-label="Présence de ${html(player.display_name)}">${options}</select></td><td><span class="secure-tag">${response ? 'Répondu' : 'En attente'}</span></td>${wellness}${answers}<td>${response?.note ? html(response.note) : '—'}</td></tr>`;
     }).join('');
-    const mean = (values) => {
-      const list = values.filter(Number.isFinite);
-      return list.length ? fr(list.reduce((sum, value) => sum + value, 0) / list.length) : '—';
-    };
-    const submitted = [...responsesByPlayer.values()];
-    const scores = submitted.map((item) => wellnessScore(session, item)).filter((value) => value !== null);
-    const footer = `<tfoot><tr><td>Moyenne</td><td></td><td></td><td>${scores.length ? `${mean(scores)} %` : '—'}</td><td></td>${questions.map((question) => `<td>${question.type === 'scale' ? mean(submitted.map((item) => Number(item.answers?.[question.id]))) : ''}</td>`).join('')}<td></td></tr></tfoot>`;
-    return `<div class="tablewrap"><table class="secure-table secure-grid"><thead><tr><th>Joueur</th><th>${isMatch(session) ? 'Convocation' : 'Présence'}</th><th>Questionnaire</th><th>Wellness</th><th>État de forme</th>${headers}<th>Note au staff</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody>${footer}</table></div>`;
+    return `${renderWellnessAlert(session)}<div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>${isMatch(session) ? 'CONVOCATION' : 'PRÉSENCE'}</th><th>QUESTIONNAIRE</th><th>WELLNESS</th><th>ÉTAT</th>${headers}<th>NOTE AU STAFF</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div>`;
   }
 
   function renderSessionDetail(sessionId) {
@@ -346,9 +306,10 @@
       counts[item.status] = (counts[item.status] || 0) + 1;
     });
     const summary = attendanceChoices(session).map(([status, label]) => `${counts[status] || 0} ${label.toLowerCase()}`).join(' · ');
-    const { average, red } = sessionWellness(session);
+    const scores = responses.map((item) => wellnessScore(session, item)).filter((value) => value !== null);
+    const average = scores.length ? `${fr(scores.reduce((sum, value) => sum + value, 0) / scores.length)} %` : '—';
     const link = session.shared_token ? `<button class="btn secure-small" data-action="show-link" data-id="${html(session.id)}">Lien joueurs</button>` : '';
-    return `<div class="secure-title"><div><p class="eyebrow">${dateText(session.session_date)} · ${isMatch(session) ? 'MATCH' : 'ENTRAÎNEMENT'} · ${session.status === 'open' ? 'OUVERTE' : 'CLÔTURÉE'}</p><h1>${html(session.title)}</h1><p>${summary}</p></div><div class="secure-actions">${link}<button class="btn button-secondary" data-action="back-sessions">Retour aux séances</button></div></div><div class="secure-stat-grid">${statCard('Réponses', `${responses.length} / ${admin.players.filter((player) => player.active).length}`)}${statCard('Wellness moyen', average === null ? '—' : `${fr(average)} %`)}${statCard(isMatch(session) ? 'Convoqués' : 'Présents', counts.present || 0)}${statCard('Dans le rouge', red.length, red.length ? 'is-red' : '')}</div><section class="secure-panel">${renderResults(session)}</section>${wellnessLegend()}`;
+    return `<div class="secure-title"><div><p class="eyebrow">${dateText(session.session_date)} · ${isMatch(session) ? 'MATCH' : 'ENTRAÎNEMENT'} · ${session.status === 'open' ? 'OUVERTE' : 'CLÔTURÉE'}</p><h1>${html(session.title)}</h1><p>${responses.length} réponse${responses.length === 1 ? '' : 's'} · ${summary}</p></div><div class="secure-actions">${link}<button class="btn button-secondary" data-action="back-sessions">Retour aux séances</button></div></div><div class="secure-stat-grid"><article class="secure-stat"><span>RÉPONSES</span><strong>${responses.length} / ${admin.players.filter((player) => player.active).length}</strong></article><article class="secure-stat"><span>WELLNESS MOYEN</span><strong>${average}</strong></article><article class="secure-stat"><span>${isMatch(session) ? 'CONVOQUÉS' : 'PRÉSENTS'}</span><strong>${counts.present || 0}</strong></article></div><section class="secure-panel">${renderResults(session)}</section>${wellnessLegend()}`;
   }
 
   function renderAttendance() {
@@ -367,22 +328,28 @@
       const matchPresent = count(matches, 'present');
       return `<tr><td><strong>${html(player.display_name)}</strong></td><td>${trainingPresent} / ${training.length}</td><td><strong>${percent(trainingPresent, training.length)}</strong></td><td>${matchPresent} / ${matches.length}</td><td><strong>${percent(matchPresent, matches.length)}</strong></td><td>${count(matches, 'absent')}</td><td>${count(matches, 'not_called')}</td><td>${count(matches, 'injured')}</td><td>${count(matches, 'called_u15')}</td></tr>`;
     }).join('');
-    return `<div class="secure-title"><div><p class="eyebrow">SUIVI DE LA PRÉSENCE</p><h1>Taux de présence</h1><p>Séances passées uniquement. Pour les matchs, le taux compte les joueurs convoqués sur tous les matchs enregistrés.</p></div></div><section class="secure-panel"><div class="tablewrap"><table class="secure-table secure-grid"><thead><tr><th>Joueur</th><th>Entraînements</th><th>Taux</th><th>Matchs convoqué</th><th>Taux</th><th>Absent</th><th>Non convoqué</th><th>Blessé</th><th>U15D2</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="secure-muted">Aucun joueur actif dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
+    return `<div class="secure-title"><div><p class="eyebrow">SUIVI DE LA PRÉSENCE</p><h1>Taux de présence</h1><p>Séances passées uniquement. Pour les matchs, le taux compte les joueurs convoqués sur tous les matchs enregistrés.</p></div></div><section class="secure-panel"><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>ENTRAÎNEMENTS</th><th>TAUX</th><th>MATCHS CONVOQUÉ</th><th>TAUX</th><th>ABSENT</th><th>NON CONVOQUÉ</th><th>BLESSÉ</th><th>U15D2</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="secure-muted">Aucun joueur actif dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
   }
 
   function renderSessions() {
     const selected = admin.sessions.find((session) => session.id === selectedSessionId);
     const responseCount = selected ? admin.responses.filter((response) => response.session_id === selected.id).length : 0;
     const playersActive = admin.players.filter((player) => player.active).length;
+    const scaleQuestions = selected?.form_snapshot?.filter((question) => question.type === 'scale') || [];
+    const averages = scaleQuestions.map((question) => {
+      const values = admin.responses.filter((response) => response.session_id === selected.id)
+        .map((response) => Number(response.answers?.[question.id])).filter(Number.isFinite);
+      const average = values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1) : '—';
+      return `<span>${html(question.prompt)} · ${average}</span>`;
+    }).join('');
     const rows = admin.sessions.map((session) => {
       const count = admin.responses.filter((response) => response.session_id === session.id).length;
       return `<tr class="secure-row-click" data-action="view-session" data-id="${html(session.id)}"><td><strong>${html(session.title)}</strong></td><td>${dateText(session.session_date)}</td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${count} / ${playersActive}</td><td><span class="secure-tag">${session.status === 'open' ? 'Ouverte' : 'Clôturée'}</span></td><td><div class="secure-actions"><button class="btn secure-small" data-action="view-session" data-id="${html(session.id)}">Ouvrir</button><button class="btn button-secondary secure-small" data-action="edit-session" data-id="${html(session.id)}">Modifier</button>${session.status === 'open' ? `<button class="btn button-secondary secure-small" data-action="close-session" data-id="${html(session.id)}">Clôturer</button>` : ''}<button class="btn button-secondary secure-small" data-action="delete-session" data-id="${html(session.id)}">Supprimer</button></div></td></tr>`;
     }).join('');
-    const { average, red } = selected ? sessionWellness(selected) : { average: null, red: [] };
     const results = selected
-      ? `<section class="secure-panel"><div class="secure-panel-head"><div><p class="eyebrow">RÉSULTATS · ${dateText(selected.session_date)}</p><h2>${html(selected.title)}</h2><p>Clique sur une séance de l’historique pour ouvrir son détail.</p></div><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(selected.id)}">Ouvrir le détail</button></div>${renderResults(selected)}</section>`
+      ? `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">RÉSULTATS · ${dateText(selected.session_date)}</p><h2>${html(selected.title)} · ${responseCount} / ${playersActive} réponses</h2><p>Clique sur une séance de l’historique pour ouvrir son détail.</p></div></div>${renderResults(selected)}</section>`
       : '<section class="secure-panel secure-muted">Crée une séance pour afficher les résultats du questionnaire.</section>';
-    return `<div class="secure-title"><div><p class="eyebrow">SUIVI U14 · LYON - LA DUCHÈRE</p><h1>Séances & réponses</h1><p>Les réponses et synthèses ne sont visibles que par ton compte admin.</p></div><button class="btn" data-action="new-session">+ Nouvelle séance</button></div><div class="secure-stat-grid">${statCard('Séances', admin.sessions.length)}${statCard('Réponses', `${responseCount} / ${playersActive}`)}${statCard('Wellness moyen', average === null ? '—' : `${fr(average)} %`)}${statCard('Dans le rouge', red.length, red.length ? 'is-red' : '')}</div>${results}${wellnessLegend()}<section class="secure-panel"><div class="secure-panel-head"><div><p class="eyebrow">HISTORIQUE</p><h2>Séances précédentes</h2></div></div><div class="tablewrap"><table class="secure-table secure-grid"><thead><tr><th>Séance</th><th>Date</th><th>Type</th><th>Réponses</th><th>État</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucune séance enregistrée.</td></tr>'}</tbody></table></div></section>`;
+    return `<div class="secure-title"><div><p class="eyebrow">SUIVI U14 · LYON - LA DUCHÈRE</p><h1>Séances & réponses</h1><p>Les réponses et synthèses ne sont visibles que par ton compte admin.</p></div><button class="btn" data-action="new-session">+ Nouvelle séance</button></div><div class="secure-stat-grid"><article class="secure-stat"><span>SÉANCES CONSERVÉES</span><strong>${admin.sessions.length}</strong></article><article class="secure-stat"><span>RÉPONSES · SÉANCE SÉLECTIONNÉE</span><strong>${responseCount} / ${playersActive}</strong></article><article class="secure-stat"><span>MOYENNES PAR ÉCHELLE</span><strong>${scaleQuestions.length || '—'}</strong></article></div>${selected ? `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SYNTHÈSE · ${dateText(selected.session_date)}</p><h2>${html(selected.title)}</h2></div></div><div class="secure-muted">${averages || 'Aucune question à échelle dans cette séance.'}</div></section>` : ''}${results}${wellnessLegend()}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">HISTORIQUE</p><h2>Séances précédentes</h2></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>DATE</th><th>TYPE</th><th>RÉPONSES</th><th>ÉTAT</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="secure-muted">Aucune séance enregistrée.</td></tr>'}</tbody></table></div></section>`;
   }
 
   function renderQuestions() {
