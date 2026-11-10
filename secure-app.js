@@ -209,7 +209,26 @@
     @media(max-width:700px){.secure-header{padding:12px 14px}.secure-nav{padding:0 10px;overflow:auto}.secure-nav button{white-space:nowrap;padding:12px 9px}.secure-content{padding:20px 12px}.secure-title{align-items:flex-start;flex-direction:column}.secure-title h1{font-size:24px}.secure-stat-grid{gap:6px}.secure-stat{padding:10px}.secure-stat span{font-size:7px}.secure-stat strong{font-size:17px}.secure-panel{padding:12px 9px}.invite-row{grid-template-columns:1fr auto}.invite-row input{grid-column:1/-1;grid-row:2}.wellness-legend div{grid-template-columns:1fr}.wellness-alert{flex-wrap:wrap}.wellness-alert .secure-small{margin-left:0}}
   `;
   css.textContent += '\n    .workload-chart-wrap{overflow:auto}.workload-chart{display:block;max-width:none}.workload-chart-empty{margin:0;padding:24px;color:#748177;text-align:center;font-size:12px}.workload-chart-filter{min-width:170px}.secure-session-duration{width:90px;min-height:32px;border:1px solid #e2e8e1;background:#fff;padding:4px 7px}.load-state{display:inline-block;padding:4px 7px;font-size:10px;font-weight:600;white-space:nowrap}.load-under{color:#1760a8}.load-normal{color:#3f7d4e}.load-over{color:#a84433}.load-pending{color:#74817a}.load-state.load-under{background:#e8f1ff}.load-state.load-normal{background:#e6f0e5}.load-state.load-over{background:#f9eae5}.load-state.load-pending{background:#edf0ed}\n  ';
+  const TONES = {
+    blue: { bg: '#e8f1ff', fg: '#1760a8', bar: '#3b82c4', label: 'Bleu' },
+    green: { bg: '#d9efdc', fg: '#2a7a41', bar: '#3f9a55', label: 'Vert' },
+    lime: { bg: '#eaf5c8', fg: '#587a14', bar: '#9bc53d', label: 'Vert clair' },
+    yellow: { bg: '#fcf1bf', fg: '#7f6400', bar: '#e3b505', label: 'Jaune' },
+    orange: { bg: '#fde3c4', fg: '#9a5200', bar: '#e8892b', label: 'Orange' },
+    red: { bg: '#f8d7d0', fg: '#a1281a', bar: '#c65343', label: 'Rouge' },
+  };
+  css.textContent += `\n    ${Object.entries(TONES).map(([name, tone]) => `.tone-${name}{background:${tone.bg};color:${tone.fg}}`).join('')}.tone-badge{display:inline-block;padding:4px 8px;font:600 12px 'Space Mono',monospace;white-space:nowrap}.tone-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tone-legend .tone-badge{font-size:10px}\n  `;
   document.head.append(css);
+
+  // Seuils de couleur : charge hebdomadaire, charge de séance (UA) et score wellness (%).
+  const weekLoadTone = (value) => (value > 2300 ? 'red' : value >= 1900 ? 'orange' : value >= 1500 ? 'green' : 'blue');
+  const sessionLoadTone = (value) => (value >= 600 ? 'red' : value >= 400 ? 'orange' : value >= 250 ? 'green' : 'blue');
+  const wellnessTone = (value) => (value >= 77 ? 'green' : value >= 62 ? 'lime' : value >= 48 ? 'yellow' : 'red');
+  const toneBadge = (tone, text, title = '') => `<span class="tone-badge tone-${tone}"${title ? ` title="${html(title)}"` : ''}>${text}</span>`;
+  const toneLegend = (items) => `<div class="tone-legend">${items.map(([tone, text]) => toneBadge(tone, text)).join('')}</div>`;
+  const WEEK_LOAD_LEGEND = [['red', '> 2300 UA'], ['orange', '1900 – 2300 UA'], ['green', '1500 – 1899 UA'], ['blue', '< 1500 UA']];
+  const SESSION_LOAD_LEGEND = [['red', '≥ 600 UA'], ['orange', '400 – 599 UA'], ['green', '250 – 399 UA'], ['blue', '< 250 UA']];
+  const WELLNESS_LEGEND = [['green', '100 – 77 %'], ['lime', '77 – 62 %'], ['yellow', '62 – 48 %'], ['red', '< 48 %']];
 
   function toast(text) {
     let node = one('#secure-toast');
@@ -254,7 +273,7 @@
     one('.shell').hidden = true;
     let root = one('#secure-admin');
     if (!root) {
-      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="workload">Charge & RPE</button><button data-tab="questions">Questionnaires</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
+      document.body.insertAdjacentHTML('beforeend', `<div id="secure-admin"><header class="secure-header"><div class="secure-brand"><img src="https://www.lyonladuchere.fr/app/uploads/2023/08/logo.svg" alt=""><strong>LA DUCHÈRE · U14</strong></div><div class="secure-header-actions"><span class="secure-tag">ADMIN</span><button class="btn secure-small" id="secure-logout" type="button">Déconnexion</button></div></header><nav class="secure-nav" aria-label="Administration"><button data-tab="sessions">Séances & réponses</button><button data-tab="attendance">Présences</button><button data-tab="wellness">Wellness</button><button data-tab="workload">Charge & RPE</button><button data-tab="questions">Questionnaires</button><button data-tab="players">Effectif</button></nav><main class="secure-content" id="secure-content"></main></div>`);
       root = one('#secure-admin');
       root.addEventListener('click', handleAction);
       root.addEventListener('change', (event) => {
@@ -298,6 +317,7 @@
     }
     else if (activeTab === 'players') content.innerHTML = renderPlayers();
     else if (activeTab === 'attendance') content.innerHTML = renderAttendance();
+    else if (activeTab === 'wellness') content.innerHTML = renderWellness();
     else if (activeTab === 'workload') {
       content.innerHTML = renderWorkload()
         .replace('<th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th>', '<th>JOUEUR</th><th>CHARGE · 7 J</th><th>MOYENNE / SEMAINE</th><th>ZONE</th><th>MONOTONIE · 7 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th>')
@@ -372,15 +392,15 @@
   function wellnessCells(info) {
     if (info.score === null) return '<td class="secure-muted">—</td><td class="secure-muted">—</td>';
     if (info.state === 'pending') {
-      return `<td><span class="wb wb-score wb-pending">${fr(info.score)} %</span></td><td><span class="wb wb-pending" title="Référence personnelle après ${MIN_BASELINE} séances">Référence ${info.count}/${MIN_BASELINE}</span></td>`;
+      return `<td>${toneBadge(wellnessTone(info.score), `${fr(info.score)} %`)}</td><td><span class="wb wb-pending" title="Référence personnelle après ${MIN_BASELINE} séances">Référence ${info.count}/${MIN_BASELINE}</span></td>`;
     }
     const state = WELLNESS_STATES[info.state];
-    return `<td><span class="wb wb-score ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${fr(info.score)} %</span><div class="secure-muted">habituel ${fr(info.mean)} %</div></td><td><span class="wb ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${state.label}</span></td>`;
+    return `<td><span class="tone-badge tone-${wellnessTone(info.score)}" title="${html(state.zone + ' · ' + state.action)}">${fr(info.score)} %</span><div class="secure-muted">habituel ${fr(info.mean)} %</div></td><td><span class="wb ${state.css}" title="${html(state.zone + ' · ' + state.action)}">${state.label}</span></td>`;
   }
 
   function wellnessLegend() {
     const rows = Object.values(WELLNESS_STATES).map((state) => `<div><span class="wb ${state.css}">${state.label} · ${state.zone}</span><span>${html(state.action)}</span></div>`).join('');
-    return `<section class="secure-panel"><p class="eyebrow">SCORE WELLNESS</p><p class="secure-muted">Score pondéré sur 100 % (humeur, sommeil, énergie, douleurs, alimentation, stress). L’état compare le score du jour à la moyenne habituelle du joueur (au moins ${MIN_BASELINE} séances) : orange sous -0,5 écart-type, rouge sous -1.</p><div class="wellness-legend">${rows}</div></section>`;
+    return `<section class="secure-panel"><p class="eyebrow">SCORE WELLNESS</p><p class="secure-muted">Score pondéré sur 100 % (humeur, sommeil, énergie, douleurs, alimentation, stress). L’état compare le score du jour à la moyenne habituelle du joueur (au moins ${MIN_BASELINE} séances) : orange sous -0,5 écart-type, rouge sous -1.</p>${toneLegend(WELLNESS_LEGEND)}<div class="wellness-legend">${rows}</div></section>`;
   }
 
   function renderWellnessAlert(session) {
@@ -454,9 +474,10 @@
           : response?.answers?.[question.id];
         return answerControl('workload', session, player, question, value);
       }).join('');
-      const load = response?.training_load == null ? 'Durée à renseigner' : `${fr(response.training_load, 0)} UA`;
+      const loadValue = response?.training_load == null ? null : Number(response.training_load);
+      const load = loadValue === null ? 'Durée à renseigner' : toneBadge(sessionLoadTone(loadValue), `${fr(loadValue, 0)} UA`);
       const status = response ? '<span class="secure-tag">Répondu</span>' : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-workload" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
-      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}<td><strong>${load}</strong></td></tr>`;
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}      <td>${load}</td></tr>`;
     }).join('');
     return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE DE TRAVAIL</p><h2>Durée, RPE et charge</h2><p>Charge de séance = durée (minutes) × RPE. Modifie les valeurs directement dans le tableau.</p></div></div><div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>QUESTIONNAIRE</th>${headers}<th>CHARGE</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
   }
@@ -476,10 +497,10 @@
     const scores = responses.map((item) => wellnessScore(session, item)).filter((value) => value !== null);
     const average = scores.length ? `${fr(scores.reduce((sum, value) => sum + value, 0) / scores.length)} %` : '—';
     const link = session.shared_token ? `<button class="btn secure-small" data-action="show-link" data-id="${html(session.id)}">Lien joueurs</button>` : '';
-    return `<div class="secure-title"><div><p class="eyebrow">${dateText(session.session_date)} · ${isMatch(session) ? 'MATCH' : 'ENTRAÎNEMENT'} · ${session.status === 'open' ? 'OUVERTE' : 'CLÔTURÉE'}</p><h1>${html(session.title)}</h1><p>${responses.length} réponse${responses.length === 1 ? '' : 's'} · ${summary}</p></div><div class="secure-actions">${link}<button class="btn button-secondary" data-action="back-sessions">Retour aux séances</button></div></div><div class="secure-stat-grid"><article class="secure-stat"><span>RÉPONSES</span><strong>${responses.length} / ${admin.players.filter((player) => player.active).length}</strong></article><article class="secure-stat"><span>WELLNESS MOYEN</span><strong>${average}</strong></article><article class="secure-stat"><span>${isMatch(session) ? 'CONVOQUÉS' : 'PRÉSENTS'}</span><strong>${counts.present || 0}</strong></article></div><section class="secure-panel">${renderResults(session)}</section>${wellnessLegend()}`;
+    return `<div class="secure-title"><div><p class="eyebrow">${dateText(session.session_date)} · ${isMatch(session) ? 'MATCH' : 'ENTRAÎNEMENT'} · ${session.status === 'open' ? 'OUVERTE' : 'CLÔTURÉE'}</p><h1>${html(session.title)}</h1><p>${responses.length} réponse${responses.length === 1 ? '' : 's'} · ${summary}</p></div><div class="secure-actions">${link}<button class="btn button-secondary" data-action="back-sessions">Retour aux séances</button></div></div><div class="secure-stat-grid"><article class="secure-stat"><span>RÉPONSES</span><strong>${responses.length} / ${admin.players.filter((player) => player.active).length}</strong></article><article class="secure-stat"><span>WELLNESS MOYEN</span><strong>${scores.length ? toneBadge(wellnessTone(scores.reduce((sum, value) => sum + value, 0) / scores.length), average) : average}</strong></article><article class="secure-stat"><span>${isMatch(session) ? 'CONVOQUÉS' : 'PRÉSENTS'}</span><strong>${counts.present || 0}</strong></article></div><section class="secure-panel">${renderResults(session)}</section>${wellnessLegend()}`;
   }
 
-  function renderRankedSessionChart(title, subtitle, entries, unit, color, maximum, decimals) {
+  function renderRankedSessionChart(title, subtitle, entries, unit, color, maximum, decimals, toneFor, legend) {
     const measured = entries
       .filter((entry) => Number.isFinite(entry.value))
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'fr'));
@@ -509,12 +530,12 @@
       const barWidth = Math.min(38, slot * 0.58);
       const label = entry.name.length > 10 ? `${entry.name.slice(0, 9)}…` : entry.name;
       const valueLabel = measuredValue ? `${fr(entry.value, decimals)} ${unit}` : '—';
-      return `<g><title>${html(entry.name)} · ${valueLabel}</title><rect x="${center - barWidth / 2}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="${measuredValue ? color : '#a7b0aa'}"/><text x="${center}" y="${Math.max(chartTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="9">${measuredValue ? fr(entry.value, decimals) : '—'}</text><text x="${center}" y="${chartBottom + 18}" text-anchor="middle" fill="#58665d" font-size="9">${html(label)}</text></g>`;
+      return `<g><title>${html(entry.name)} · ${valueLabel}</title><rect x="${center - barWidth / 2}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="${measuredValue ? (toneFor ? TONES[toneFor(entry.value)].bar : color) : '#a7b0aa'}"/><text x="${center}" y="${Math.max(chartTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="9">${measuredValue ? fr(entry.value, decimals) : '—'}</text><text x="${center}" y="${chartBottom + 18}" text-anchor="middle" fill="#58665d" font-size="9">${html(label)}</text></g>`;
     }).join('');
     const chart = ranked.length
       ? `<div class="workload-chart-wrap"><svg class="workload-chart" width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="${html(title)}"><title>${html(title)}</title>${grid}${bars}</svg></div>`
       : '<p class="workload-chart-empty">Aucun joueur dans l’effectif.</p>';
-    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">${html(subtitle)}</p><h2>${html(title)}</h2><p>Du plus élevé à gauche au plus faible à droite. Les joueurs sans mesure sont affichés à la fin avec « — ».</p></div></div>${chart}</section>`;
+    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">${html(subtitle)}</p><h2>${html(title)}</h2><p>Du plus élevé à gauche au plus faible à droite. Les joueurs sans mesure sont affichés à la fin avec « — ».</p></div></div>${chart}${legend || ''}</section>`;
   }
 
   function renderSessionLoadCharts(session) {
@@ -541,7 +562,48 @@
       const score = response ? wellnessScore(session, response) : null;
       return { name: player.display_name, value: Number.isFinite(score) ? score : null };
     });
-    return `${renderRankedSessionChart('Charge par joueur', 'CHARGE DE LA SÉANCE', workloadEntries, 'UA', '#8e1b2c', null, 0)}${renderRankedSessionChart('Score wellness par joueur', 'WELLNESS DE LA SÉANCE', wellnessEntries, '%', '#4f8d5d', 100, 1)}`;
+    return `${renderRankedSessionChart('Charge par joueur', 'CHARGE DE LA SÉANCE', workloadEntries, 'UA', '#8e1b2c', null, 0, sessionLoadTone, toneLegend(SESSION_LOAD_LEGEND))}${renderRankedSessionChart('Score wellness par joueur', 'WELLNESS DE LA SÉANCE', wellnessEntries, '%', '#4f8d5d', 100, 1, wellnessTone, toneLegend(WELLNESS_LEGEND))}`;
+  }
+
+  function renderWellness() {
+    const sessionsById = new Map(admin.sessions.map((session) => [session.id, session]));
+    const today = todayKey();
+    const weekStart = new Date(`${today}T12:00:00`);
+    weekStart.setDate(weekStart.getDate() - 6);
+    const weekStartKey = weekStart.toLocaleDateString('sv-SE');
+    const order = (session) => `${session.session_date}|${session.created_at}`;
+    const questions = admin.questions.filter((question) => question.active && question.question_type === 'scale');
+    const chartEntries = [];
+    const playerRows = admin.players.filter((player) => player.active).map((player) => {
+      const entries = admin.responses
+        .filter((response) => response.player_id === player.id)
+        .map((response) => ({ response, session: sessionsById.get(response.session_id) }))
+        .filter(({ session }) => session && session.session_date <= today)
+        .sort((a, b) => order(a.session).localeCompare(order(b.session)));
+      const latest = entries.at(-1);
+      const recentScores = entries
+        .filter(({ session }) => session.session_date >= weekStartKey)
+        .map(({ session, response }) => wellnessScore(session, response))
+        .filter((value) => value !== null);
+      const weekAverage = recentScores.length ? recentScores.reduce((sum, value) => sum + value, 0) / recentScores.length : null;
+      const latestScore = latest ? wellnessScore(latest.session, latest.response) : null;
+      chartEntries.push({ name: player.display_name, value: latestScore });
+      const answers = questions.map((question) => `<td>${html(latest?.response.answers?.[question.id] ?? '—')}</td>`).join('');
+      const scoreCells = latest ? wellnessCells(wellnessFor(latest.session, latest.response)) : '<td class="secure-muted">—</td><td class="secure-muted">—</td>';
+      return `<tr><td><strong>${html(player.display_name)}</strong></td>${scoreCells}<td>${weekAverage === null ? '—' : toneBadge(wellnessTone(weekAverage), `${fr(weekAverage)} %`)}</td>${answers}<td>${latest ? dateText(latest.session.session_date) : '—'}</td><td>${entries.length}</td></tr>`;
+    }).join('');
+    const sessionRows = [...admin.sessions].sort((a, b) => order(b).localeCompare(order(a))).map((session) => {
+      const responses = admin.responses.filter((response) => response.session_id === session.id);
+      const expectedPlayers = admin.attendance.filter((item) => item.session_id === session.id).length
+        || admin.players.filter((player) => player.active).length;
+      const scores = responses.map((response) => wellnessScore(session, response)).filter((value) => value !== null);
+      const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
+      const alerts = responses.filter((response) => wellnessFor(session, response).state === 'red').length;
+      return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${isMatch(session) ? 'Match' : 'Entraînement'}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average === null ? '—' : toneBadge(wellnessTone(average), `${fr(average)} %`)}</td><td>${alerts ? toneBadge('red', `${alerts} joueur${alerts === 1 ? '' : 's'}`) : '—'}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
+    }).join('');
+    const chart = renderRankedSessionChart('Score wellness par joueur', 'DERNIÈRE RÉPONSE · WELLNESS', chartEntries, '%', '#4f8d5d', 100, 1, wellnessTone, toneLegend(WELLNESS_LEGEND));
+    const questionHeaders = questions.map((question) => `<th>${html(question.prompt)}</th>`).join('');
+    return `<div class="secure-title"><div><p class="eyebrow">BIEN-ÊTRE · SUIVI U14</p><h1>Wellness</h1><p>Réponses au questionnaire wellness. Score pondéré sur 100 %, coloré selon le niveau de forme.</p></div></div>${chart}<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SUIVI SÉANCE PAR SÉANCE</p><h2>Wellness par séance</h2><p>Ouvre le détail d’une séance pour consulter et modifier les réponses individuelles.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>WELLNESS MOYEN</th><th>ALERTES</th><th></th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6" class="secure-muted">Aucune séance créée.</td></tr>'}</tbody></table></div></section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Dernières réponses des joueurs</h2><p>Score et réponses de la dernière séance renseignée, moyenne sur les 7 derniers jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>DERNIER WELLNESS</th><th>ÉTAT</th><th>MOYENNE · 7 J</th>${questionHeaders}<th>DATE</th><th>RÉPONSES</th></tr></thead><tbody>${playerRows || `<tr><td colspan="${6 + questions.length}" class="secure-muted">Aucun joueur actif dans l’effectif.</td></tr>`}</tbody></table></div></section>${wellnessLegend()}`;
   }
 
   function renderAttendance() {
@@ -627,7 +689,7 @@
       const loadLabel = { 'load-pending': 'À compléter', 'load-under': 'Sous-charge', 'load-normal': 'Dans la moyenne', 'load-over': 'Surcharge' }[loadState];
       const latest = entries.at(-1)?.response;
       playerMetrics.push({ name: player.display_name, load: weeklyLoad, state: loadState, label: loadLabel });
-      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><strong class="${loadState}">${fr(weeklyLoad, 0)} UA</strong></td><td>${fr(weeklyAverage, 0)} UA</td><td><span class="load-state ${loadState}">${loadLabel}</span></td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td>${toneBadge(weekLoadTone(weeklyLoad), `${fr(weeklyLoad, 0)} UA`)}</td><td>${fr(weeklyAverage, 0)} UA</td><td><span class="load-state ${loadState}">${loadLabel}</span></td><td>${monotony === null ? '—' : fr(monotony)}</td><td>${latest ? `${fr(latest.rpe, 1)} / 10` : '—'}</td><td>${entries.length}</td></tr>`;
     }).join('');
     const workloadSessions = [...admin.sessions].sort((a, b) => b.session_date.localeCompare(a.session_date));
     const sessionRows = workloadSessions.map((session) => {
@@ -638,9 +700,11 @@
         const values = responses.map((response) => response[field]).filter((value) => value != null).map(Number);
         return values.length ? fr(values.reduce((sum, value) => sum + value, 0) / values.length, 1) : '—';
       };
-      const hasLoad = responses.some((response) => response.training_load != null);
+      const loadValues = responses.map((response) => response.training_load).filter((value) => value != null).map(Number);
+      const averageLoad = loadValues.length ? loadValues.reduce((sum, value) => sum + value, 0) / loadValues.length : null;
+      const averageLoadCell = averageLoad === null ? '—' : toneBadge(sessionLoadTone(averageLoad), `${fr(averageLoad, 1)} UA`);
       const duration = `<input class="secure-session-duration" data-session-id="${html(session.id)}" type="number" min="1" max="300" step="1" value="${html(session.duration_minutes ?? '')}" aria-label="Durée de ${html(session.title)} en minutes">`;
-      return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${duration}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${average('training_load')}${hasLoad ? ' UA' : ''}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
+      return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${duration}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${averageLoadCell}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
     }).join('');
     const rankedPlayers = playerMetrics.sort((a, b) => b.load - a.load || a.name.localeCompare(b.name, 'fr'));
     const rankingWidth = Math.max(640, rankedPlayers.length * 82 + 62);
@@ -656,7 +720,6 @@
       const y = rankingBottom - fraction * rankingPlotHeight;
       return `<line x1="${rankingLeft}" y1="${y}" x2="${rankingWidth - rankingRight}" y2="${y}" stroke="#e2e8e1"/><text x="${rankingLeft - 7}" y="${y + 4}" text-anchor="end" fill="#7d8981" font-size="10">${fr(rankingMax * fraction, 0)}</text>`;
     }).join('');
-    const rankingColors = { 'load-under': '#3b82c4', 'load-normal': '#4f8d5d', 'load-over': '#c65343', 'load-pending': '#a7b0aa' };
     const rankingBars = rankedPlayers.map((player, index) => {
       const slot = rankingPlotWidth / Math.max(1, rankedPlayers.length);
       const center = rankingLeft + index * slot + slot / 2;
@@ -664,16 +727,16 @@
       const barHeight = player.load / rankingMax * rankingPlotHeight;
       const y = rankingBottom - barHeight;
       const label = player.name.length > 10 ? `${player.name.slice(0, 9)}…` : player.name;
-      return `<g><title>${html(player.name)} · ${fr(player.load, 0)} UA · ${player.label}</title><rect x="${center - barWidth / 2}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="${rankingColors[player.state]}"/><text x="${center}" y="${Math.max(rankingTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="9">${fr(player.load, 0)}</text><text x="${center}" y="${rankingBottom + 18}" text-anchor="middle" fill="#58665d" font-size="9">${html(label)}</text></g>`;
+      return `<g><title>${html(player.name)} · ${fr(player.load, 0)} UA · ${player.label}</title><rect x="${center - barWidth / 2}" y="${y}" width="${barWidth}" height="${barHeight}" rx="2" fill="${TONES[weekLoadTone(player.load)].bar}"/><text x="${center}" y="${Math.max(rankingTop + 10, y - 5)}" text-anchor="middle" fill="#1d2c26" font-size="9">${fr(player.load, 0)}</text><text x="${center}" y="${rankingBottom + 18}" text-anchor="middle" fill="#58665d" font-size="9">${html(label)}</text></g>`;
     }).join('');
     const chart = rankedPlayers.length
       ? `<svg class="workload-chart" width="${rankingWidth}" height="${rankingHeight}" viewBox="0 0 ${rankingWidth} ${rankingHeight}" role="img" aria-label="Classement des charges d’entraînement des joueurs sur les 7 derniers jours"><title>Charge totale sur les 7 derniers jours, du plus élevé à gauche au plus faible à droite</title>${rankingGrid}${rankingBars}</svg>`
       : '<p class="workload-chart-empty">Aucun joueur actif dans l’effectif.</p>';
-    workloadChartSection = `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE D’ENTRAÎNEMENT · 7 JOURS</p><h2>Classement des joueurs</h2><p>Charge totale calculée sur les 7 derniers jours, de la plus élevée à la plus faible. Les joueurs sans charge calculable restent en bas du classement.</p></div></div><div class="workload-chart-wrap">${chart}</div></section>`;
+    workloadChartSection = `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE D’ENTRAÎNEMENT · 7 JOURS</p><h2>Classement des joueurs</h2><p>Charge totale calculée sur les 7 derniers jours, de la plus élevée à la plus faible. Les joueurs sans charge calculable restent en bas du classement.</p></div></div><div class="workload-chart-wrap">${chart}</div>${toneLegend(WEEK_LOAD_LEGEND)}</section>`;
     const active = admin.workloadQuestions.filter((question) => question.active);
     const archived = admin.workloadQuestions.filter((question) => !question.active);
     const questionRow = (question) => `<tr><td><strong>${html(question.prompt)}</strong><div class="secure-muted">${html(question.help_text)}</div></td><td>${question.metric_key === 'duration_minutes' ? 'Durée · charge' : question.metric_key === 'rpe' ? 'RPE · charge' : question.question_type === 'scale' ? `Échelle ${question.scale_min}–${question.scale_max}` : question.question_type === 'number' ? 'Nombre' : question.question_type === 'short_text' ? 'Texte court' : 'Choix unique'}</td><td><div class="secure-actions"><button class="btn button-secondary secure-small" data-action="edit-workload-question" data-id="${html(question.id)}">Modifier</button>${question.metric_key ? '<span class="secure-muted">Indispensable au calcul</span>' : `<button class="btn button-secondary secure-small" data-action="${question.active ? 'archive-workload-question' : 'restore-workload-question'}" data-id="${html(question.id)}">${question.active ? 'Retirer' : 'Restaurer'}</button>`}</div></td></tr>`;
-    return `<div class="secure-title"><div><p class="eyebrow">CHARGE INTERNE · SUIVI U14</p><h1>Charge & RPE</h1><p>Charge séance = durée en minutes × RPE. UA = unités arbitraires.</p></div></div><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SUIVI SÉANCE PAR SÉANCE</p><h2>Charge et RPE par séance</h2><p>Chaque séance conserve ses réponses. Ouvre son détail pour consulter les valeurs individuelles et les joueurs en attente.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6" class="secure-muted">Aucune séance créée.</td></tr>'}</tbody></table></div></section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Monotonie et fitness</h2><p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th></tr></thead><tbody>${playerRows || '<tr><td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.</td></tr>'}</tbody></table></div></section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">MODÈLE DES PROCHAINES SÉANCES</p><h2>Questionnaire de charge</h2><p>La durée et le RPE sont nécessaires au calcul. Les autres questions peuvent être ajoutées ou retirées.</p></div><button class="btn" data-action="new-workload-question">+ Ajouter une question</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>QUESTION</th><th>TYPE / INDICATEUR</th><th></th></tr></thead><tbody>${active.map(questionRow).join('') || '<tr><td colspan="3" class="secure-muted">Ajoute les questions du questionnaire de charge.</td></tr>'}</tbody></table></div></section>${archived.length ? `<section class="secure-panel"><p class="eyebrow">QUESTIONS RETIRÉES</p><div class="tablewrap"><table class="secure-table"><tbody>${archived.map(questionRow).join('')}</tbody></table></div></section>` : ''}`;
+    return `<div class="secure-title"><div><p class="eyebrow">CHARGE INTERNE · SUIVI U14</p><h1>Charge & RPE</h1><p>Charge séance = durée en minutes × RPE. UA = unités arbitraires.</p></div></div><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SUIVI SÉANCE PAR SÉANCE</p><h2>Charge et RPE par séance</h2><p>Chaque séance conserve ses réponses. Ouvre son détail pour consulter les valeurs individuelles et les joueurs en attente.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6" class="secure-muted">Aucune séance créée.</td></tr>'}</tbody></table></div>${toneLegend(SESSION_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Monotonie et fitness</h2><p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th></tr></thead><tbody>${playerRows || '<tr><td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.</td></tr>'}</tbody></table></div>${toneLegend(WEEK_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">MODÈLE DES PROCHAINES SÉANCES</p><h2>Questionnaire de charge</h2><p>La durée et le RPE sont nécessaires au calcul. Les autres questions peuvent être ajoutées ou retirées.</p></div><button class="btn" data-action="new-workload-question">+ Ajouter une question</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>QUESTION</th><th>TYPE / INDICATEUR</th><th></th></tr></thead><tbody>${active.map(questionRow).join('') || '<tr><td colspan="3" class="secure-muted">Ajoute les questions du questionnaire de charge.</td></tr>'}</tbody></table></div></section>${archived.length ? `<section class="secure-panel"><p class="eyebrow">QUESTIONS RETIRÉES</p><div class="tablewrap"><table class="secure-table"><tbody>${archived.map(questionRow).join('')}</tbody></table></div></section>` : ''}`;
   }
 
   function renderSessions() {
