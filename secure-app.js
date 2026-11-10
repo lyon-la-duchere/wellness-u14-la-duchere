@@ -280,6 +280,7 @@
         if (event.target.closest('select[data-attendance]')) handleAttendanceChange(event);
         else if (event.target.closest('.secure-answer-edit')) handleAnswerChange(event);
         else if (event.target.matches('.secure-session-duration')) handleSessionDurationChange(event);
+        else if (event.target.matches('.secure-player-duration')) handlePlayerDurationChange(event);
         else if (event.target.matches('[data-workload-chart-player]')) {
           selectedWorkloadPlayerId = event.target.value;
           renderAdmin();
@@ -466,6 +467,7 @@
     const responsesByPlayer = new Map(admin.workloadResponses.filter((item) => item.session_id === session.id).map((item) => [item.player_id, item]));
     const players = admin.players.filter((player) => player.active || responsesByPlayer.has(player.id));
     const headers = questions.map((question) => `<th>${html(question.prompt)}</th>`).join('');
+    const matchSession = isMatch(session);
     const rows = players.map((player) => {
       const response = responsesByPlayer.get(player.id);
       const values = questions.map((question) => {
@@ -477,9 +479,17 @@
       const loadValue = response?.training_load == null ? null : Number(response.training_load);
       const load = loadValue === null ? 'Durée à renseigner' : toneBadge(sessionLoadTone(loadValue), `${fr(loadValue, 0)} UA`);
       const status = response ? '<span class="secure-tag">Répondu</span>' : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-workload" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
-      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}      <td>${load}</td></tr>`;
+      const minutesCell = matchSession
+        ? (response
+          ? `<td><input class="secure-player-duration" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}" type="number" min="1" max="300" step="1" value="${html(response.duration_minutes ?? '')}" aria-label="Temps de jeu de ${html(player.display_name)} en minutes"></td>`
+          : '<td class="secure-muted">—</td>')
+        : '';
+      return `<tr><td><strong>${html(player.display_name)}</strong></td><td><div class="secure-actions">${status}</div></td>${values}${minutesCell}<td>${load}</td></tr>`;
     }).join('');
-    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE DE TRAVAIL</p><h2>Durée, RPE et charge</h2><p>Charge de séance = durée (minutes) × RPE. Modifie les valeurs directement dans le tableau.</p></div></div><div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>QUESTIONNAIRE</th>${headers}<th>CHARGE</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
+    const intro = matchSession
+      ? 'Charge de séance = temps de jeu (minutes) × RPE. Renseigne le temps de jeu de chaque joueur : il remplace la durée commune du match.'
+      : 'Charge de séance = durée (minutes) × RPE. Modifie les valeurs directement dans le tableau.';
+    return `<section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">CHARGE DE TRAVAIL</p><h2>${matchSession ? 'Temps de jeu, RPE et charge' : 'Durée, RPE et charge'}</h2><p>${intro}</p></div></div><div class="tablewrap"><table class="secure-table secure-results-table"><thead><tr><th>JOUEUR</th><th>QUESTIONNAIRE</th>${headers}${matchSession ? '<th>TEMPS DE JEU (MIN)</th>' : ''}<th>CHARGE</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="secure-muted">Aucun joueur dans l’effectif.</td></tr>'}</tbody></table></div></section>`;
   }
 
   function renderSessionDetail(sessionId) {
@@ -797,7 +807,11 @@
       }
       return `<label class="secure-field">${index + 1}. ${html(question.prompt)}${control}</label>`;
     }).join('');
-    const dialog = openDialog(`<form id="manual-response-form"><h2>${title}</h2><p>${html(player.display_name)} · ${dateText(session.session_date)} · ${html(session.title)}</p>${fields}${kind === 'wellness' ? '<label class="secure-field">Note au staff<textarea name="note" maxlength="240" rows="2"></textarea></label>' : ''}<p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Enregistrer</button></div></form>`);
+    const matchEntry = kind === 'workload' && isMatch(session);
+    const minutesField = matchEntry
+      ? `<label class="secure-field">Temps de jeu (minutes)<input name="played_minutes" type="number" min="1" max="300" step="1" value="${html(session.duration_minutes ?? '')}" required></label>`
+      : '';
+    const dialog = openDialog(`<form id="manual-response-form"><h2>${title}</h2><p>${html(player.display_name)} · ${dateText(session.session_date)} · ${html(session.title)}</p>${minutesField}${fields}${kind === 'wellness' ? '<label class="secure-field">Note au staff<textarea name="note" maxlength="240" rows="2"></textarea></label>' : ''}<p class="secure-error" id="dialog-error" role="alert"></p><div class="secure-dialog-actions"><button class="btn button-secondary" type="button" data-action="close-dialog">Annuler</button><button class="btn" type="submit">Enregistrer</button></div></form>`);
     one('#manual-response-form', dialog).onsubmit = async (event) => {
       event.preventDefault();
       const answers = {};
@@ -818,7 +832,15 @@
           one('#dialog-error', dialog).textContent = 'Vérifie le RPE avant l’enregistrement.';
           return;
         }
-        result = await client.from('workload_responses').insert({ session_id: session.id, player_id: player.id, answers, duration_minutes: session.duration_minutes, rpe });
+        let durationMinutes = session.duration_minutes;
+        if (matchEntry) {
+          durationMinutes = Number(one('[name="played_minutes"]', dialog).value);
+          if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 300) {
+            one('#dialog-error', dialog).textContent = 'Le temps de jeu doit être compris entre 1 et 300 minutes.';
+            return;
+          }
+        }
+        result = await client.from('workload_responses').insert({ session_id: session.id, player_id: player.id, answers, duration_minutes: durationMinutes, rpe });
       } else {
         result = await client.from('wellness_responses').insert({ session_id: session.id, player_id: player.id, answers, note: one('[name="note"]', dialog)?.value.trim() || '' });
       }
@@ -882,6 +904,26 @@
     await loadAdmin();
     renderAdmin();
     toast(duration === null ? 'Durée retirée; charges en attente.' : 'Durée enregistrée; charges recalculées.');
+  }
+
+  async function handlePlayerDurationChange(event) {
+    const field = event.target.closest('.secure-player-duration');
+    if (!field) return;
+    const response = admin.workloadResponses.find((item) => item.session_id === field.dataset.sessionId && item.player_id === field.dataset.playerId);
+    if (!response) return;
+    const minutes = field.value === '' ? null : Number(field.value);
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 300)) {
+      toast('Le temps de jeu doit être compris entre 1 et 300 minutes.');
+      return;
+    }
+    const { error } = await client.from('workload_responses').update({ duration_minutes: minutes }).eq('id', response.id);
+    if (error) {
+      toast('Impossible d’enregistrer le temps de jeu.');
+      return;
+    }
+    await loadAdmin();
+    renderAdmin();
+    toast(minutes === null ? 'Temps de jeu retiré; charge en attente.' : 'Temps de jeu enregistré; charge recalculée.');
   }
 
   async function handleAnswerChange(event) {
