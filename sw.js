@@ -1,4 +1,4 @@
-const CACHE = 'wellness-u14-v1';
+const CACHE = 'wellness-u14-v2';
 const SHELL = ['./', 'index.html', 'secure-app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', event => {
@@ -19,7 +19,7 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then(response => {
         if (response.ok) {
           const copy = response.clone();
