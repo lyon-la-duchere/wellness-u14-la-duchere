@@ -222,12 +222,17 @@
 
   // Seuils de couleur : charge hebdomadaire, charge de séance (UA) et score wellness (%).
   const weekLoadTone = (value) => (value > 2300 ? 'red' : value >= 1900 ? 'orange' : value >= 1500 ? 'green' : 'blue');
-  const sessionLoadTone = (value) => (value >= 600 ? 'red' : value >= 400 ? 'orange' : value >= 250 ? 'green' : 'blue');
+  const sessionLoadTone = (value, session) => {
+    const [low, mid, high] = isMatch(session) ? [400, 550, 700] : [200, 450, 700];
+    return value > high ? 'red' : value > mid ? 'orange' : value >= low ? 'green' : 'blue';
+  };
   const wellnessTone = (value) => (value >= 77 ? 'green' : value >= 62 ? 'lime' : value >= 48 ? 'yellow' : 'red');
   const toneBadge = (tone, text, title = '') => `<span class="tone-badge tone-${tone}"${title ? ` title="${html(title)}"` : ''}>${text}</span>`;
   const toneLegend = (items) => `<div class="tone-legend">${items.map(([tone, text]) => toneBadge(tone, text)).join('')}</div>`;
   const WEEK_LOAD_LEGEND = [['red', '> 2300 UA'], ['orange', '1900 – 2300 UA'], ['green', '1500 – 1899 UA'], ['blue', '< 1500 UA']];
-  const SESSION_LOAD_LEGEND = [['red', '≥ 600 UA'], ['orange', '400 – 599 UA'], ['green', '250 – 399 UA'], ['blue', '< 250 UA']];
+  const MATCH_LOAD_LEGEND = [['red', '> 700 UA'], ['orange', '550 – 700 UA'], ['green', '400 – 550 UA'], ['blue', '< 400 UA']];
+  const TRAINING_LOAD_LEGEND = [['red', '> 700 UA'], ['orange', '450 – 700 UA'], ['green', '200 – 450 UA'], ['blue', '< 200 UA']];
+  const sessionLoadLegend = (session) => toneLegend(isMatch(session) ? MATCH_LOAD_LEGEND : TRAINING_LOAD_LEGEND);
   const WELLNESS_LEGEND = [['green', '100 – 77 %'], ['lime', '77 – 62 %'], ['yellow', '62 – 48 %'], ['red', '< 48 %']];
 
   function toast(text) {
@@ -477,7 +482,7 @@
         return answerControl('workload', session, player, question, value);
       }).join('');
       const loadValue = response?.training_load == null ? null : Number(response.training_load);
-      const load = loadValue === null ? 'Durée à renseigner' : toneBadge(sessionLoadTone(loadValue), `${fr(loadValue, 0)} UA`);
+      const load = loadValue === null ? 'Durée à renseigner' : toneBadge(sessionLoadTone(loadValue, session), `${fr(loadValue, 0)} UA`);
       const status = response ? '<span class="secure-tag">Répondu</span>' : `<span class="secure-tag">En attente</span><button class="btn button-secondary secure-small" data-action="enter-workload" data-session-id="${html(session.id)}" data-player-id="${html(player.id)}">Saisir</button>`;
       const minutesCell = matchSession
         ? (response
@@ -572,7 +577,7 @@
       const score = response ? wellnessScore(session, response) : null;
       return { name: player.display_name, value: Number.isFinite(score) ? score : null };
     });
-    return `${renderRankedSessionChart('Charge par joueur', 'CHARGE DE LA SÉANCE', workloadEntries, 'UA', '#8e1b2c', null, 0, sessionLoadTone, toneLegend(SESSION_LOAD_LEGEND))}${renderRankedSessionChart('Score wellness par joueur', 'WELLNESS DE LA SÉANCE', wellnessEntries, '%', '#4f8d5d', 100, 1, wellnessTone, toneLegend(WELLNESS_LEGEND))}`;
+    return `${renderRankedSessionChart('Charge par joueur', 'CHARGE DE LA SÉANCE', workloadEntries, 'UA', '#8e1b2c', null, 0, (value) => sessionLoadTone(value, session), sessionLoadLegend(session))}${renderRankedSessionChart('Score wellness par joueur', 'WELLNESS DE LA SÉANCE', wellnessEntries, '%', '#4f8d5d', 100, 1, wellnessTone, toneLegend(WELLNESS_LEGEND))}`;
   }
 
   function renderWellness() {
@@ -712,7 +717,7 @@
       };
       const loadValues = responses.map((response) => response.training_load).filter((value) => value != null).map(Number);
       const averageLoad = loadValues.length ? loadValues.reduce((sum, value) => sum + value, 0) / loadValues.length : null;
-      const averageLoadCell = averageLoad === null ? '—' : toneBadge(sessionLoadTone(averageLoad), `${fr(averageLoad, 1)} UA`);
+      const averageLoadCell = averageLoad === null ? '—' : toneBadge(sessionLoadTone(averageLoad, session), `${fr(averageLoad, 1)} UA`);
       const duration = `<input class="secure-session-duration" data-session-id="${html(session.id)}" type="number" min="1" max="300" step="1" value="${html(session.duration_minutes ?? '')}" aria-label="Durée de ${html(session.title)} en minutes">`;
       return `<tr><td><strong>${html(session.title)}</strong><div class="secure-muted">${dateText(session.session_date)}</div></td><td>${session.session_type === 'match' ? 'Match' : 'Entraînement'}</td><td>${duration}</td><td>${responses.length} / ${expectedPlayers}</td><td>${average('rpe')}${responses.length ? ' / 10' : ''}</td><td>${averageLoadCell}</td><td><button class="btn button-secondary secure-small" data-action="view-session" data-id="${html(session.id)}">Détail</button></td></tr>`;
     }).join('');
@@ -746,7 +751,7 @@
     const active = admin.workloadQuestions.filter((question) => question.active);
     const archived = admin.workloadQuestions.filter((question) => !question.active);
     const questionRow = (question) => `<tr><td><strong>${html(question.prompt)}</strong><div class="secure-muted">${html(question.help_text)}</div></td><td>${question.metric_key === 'duration_minutes' ? 'Durée · charge' : question.metric_key === 'rpe' ? 'RPE · charge' : question.question_type === 'scale' ? `Échelle ${question.scale_min}–${question.scale_max}` : question.question_type === 'number' ? 'Nombre' : question.question_type === 'short_text' ? 'Texte court' : 'Choix unique'}</td><td><div class="secure-actions"><button class="btn button-secondary secure-small" data-action="edit-workload-question" data-id="${html(question.id)}">Modifier</button>${question.metric_key ? '<span class="secure-muted">Indispensable au calcul</span>' : `<button class="btn button-secondary secure-small" data-action="${question.active ? 'archive-workload-question' : 'restore-workload-question'}" data-id="${html(question.id)}">${question.active ? 'Retirer' : 'Restaurer'}</button>`}</div></td></tr>`;
-    return `<div class="secure-title"><div><p class="eyebrow">CHARGE INTERNE · SUIVI U14</p><h1>Charge & RPE</h1><p>Charge séance = durée en minutes × RPE. UA = unités arbitraires.</p></div></div><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SUIVI SÉANCE PAR SÉANCE</p><h2>Charge et RPE par séance</h2><p>Chaque séance conserve ses réponses. Ouvre son détail pour consulter les valeurs individuelles et les joueurs en attente.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6" class="secure-muted">Aucune séance créée.</td></tr>'}</tbody></table></div>${toneLegend(SESSION_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Monotonie et fitness</h2><p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th></tr></thead><tbody>${playerRows || '<tr><td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.</td></tr>'}</tbody></table></div>${toneLegend(WEEK_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">MODÈLE DES PROCHAINES SÉANCES</p><h2>Questionnaire de charge</h2><p>La durée et le RPE sont nécessaires au calcul. Les autres questions peuvent être ajoutées ou retirées.</p></div><button class="btn" data-action="new-workload-question">+ Ajouter une question</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>QUESTION</th><th>TYPE / INDICATEUR</th><th></th></tr></thead><tbody>${active.map(questionRow).join('') || '<tr><td colspan="3" class="secure-muted">Ajoute les questions du questionnaire de charge.</td></tr>'}</tbody></table></div></section>${archived.length ? `<section class="secure-panel"><p class="eyebrow">QUESTIONS RETIRÉES</p><div class="tablewrap"><table class="secure-table"><tbody>${archived.map(questionRow).join('')}</tbody></table></div></section>` : ''}`;
+    return `<div class="secure-title"><div><p class="eyebrow">CHARGE INTERNE · SUIVI U14</p><h1>Charge & RPE</h1><p>Charge séance = durée en minutes × RPE. UA = unités arbitraires.</p></div></div><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">SUIVI SÉANCE PAR SÉANCE</p><h2>Charge et RPE par séance</h2><p>Chaque séance conserve ses réponses. Ouvre son détail pour consulter les valeurs individuelles et les joueurs en attente.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>SÉANCE</th><th>TYPE</th><th>RÉPONSES</th><th>RPE MOYEN</th><th>CHARGE MOYENNE</th><th></th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6" class="secure-muted">Aucune séance créée.</td></tr>'}</tbody></table></div><p class="secure-muted" style="margin:10px 0 0">Entraînement</p>${toneLegend(TRAINING_LOAD_LEGEND)}<p class="secure-muted" style="margin:10px 0 0">Match</p>${toneLegend(MATCH_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">INDICATEURS ATHLÈTE</p><h2>Monotonie et fitness</h2><p>Monotonie = moyenne des charges quotidiennes / écart-type sur 7 jours. Fitness = moyenne hebdomadaire des charges sur 28 jours.</p></div></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>JOUEUR</th><th>CHARGE · 7 J</th><th>MONOTONIE · 7 J</th><th>FITNESS · 28 J</th><th>DERNIER RPE</th><th>SÉANCES SAISIES</th></tr></thead><tbody>${playerRows || '<tr><td colspan="6" class="secure-muted">Aucune donnée de charge pour le moment.</td></tr>'}</tbody></table></div>${toneLegend(WEEK_LOAD_LEGEND)}</section><section class="secure-panel"><div class="secure-title"><div><p class="eyebrow">MODÈLE DES PROCHAINES SÉANCES</p><h2>Questionnaire de charge</h2><p>La durée et le RPE sont nécessaires au calcul. Les autres questions peuvent être ajoutées ou retirées.</p></div><button class="btn" data-action="new-workload-question">+ Ajouter une question</button></div><div class="tablewrap"><table class="secure-table"><thead><tr><th>QUESTION</th><th>TYPE / INDICATEUR</th><th></th></tr></thead><tbody>${active.map(questionRow).join('') || '<tr><td colspan="3" class="secure-muted">Ajoute les questions du questionnaire de charge.</td></tr>'}</tbody></table></div></section>${archived.length ? `<section class="secure-panel"><p class="eyebrow">QUESTIONS RETIRÉES</p><div class="tablewrap"><table class="secure-table"><tbody>${archived.map(questionRow).join('')}</tbody></table></div></section>` : ''}`;
   }
 
   function renderSessions() {
