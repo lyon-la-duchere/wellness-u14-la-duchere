@@ -1,7 +1,7 @@
 {
-  "name": "Wellness · La Duchère",
-  "short_name": "Wellness U14",
-  "description": "Suivi wellness des U14 de La Duchère",
+  "name": "Suivi U14R1 · Lyon-La Duchère",
+  "short_name": "Suivi U14R1",
+  "description": "Suivi individuel des U14R1 de Lyon-La Duchère",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
