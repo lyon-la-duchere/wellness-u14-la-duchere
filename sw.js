@@ -1,5 +1,5 @@
 const CACHE = 'wellness-u14-v2';
-const SHELL = ['./', 'index.html', 'secure-app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'index.html', 'secure-app.js', 'manifest.webmanifest', 'Logo_Lyon_La_Duchère_-_2021 (1).svg', 'Logo_Lyon_La_Duchère_-_2021 (1).svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
